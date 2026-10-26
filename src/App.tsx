@@ -112,6 +112,7 @@ const App: React.FC = () => {
   const [groqModel, setGroqModel] = useState(() =>
     localStorage.getItem('ai_pdf_groq_model') || 'llama-3.3-70b-versatile'
   );
+  const [activeModelName, setActiveModelName] = useState<string>('gemini-3.6-flash');
   const [showSettings, setShowSettings] = useState(false);
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
@@ -858,7 +859,7 @@ const App: React.FC = () => {
                   <div className="chat-title">AI PDF Assistant</div>
                   <div className="chat-status">
                     <span className="online-dot" />
-                    {provider === 'gemini' ? 'Gemini Flash' : `Groq · ${groqModel.split('-').slice(0,2).join('-')}`}
+                    {provider === 'gemini' ? (activeModelName || 'Gemini 3.6 Flash') : `Groq · ${groqModel.split('-').slice(0,2).join('-')}`}
                   </div>
                 </div>
               </div>

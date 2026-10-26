@@ -13,6 +13,7 @@ export interface AiResult {
   message: string;
   action: string;
   params: Record<string, any>;
+  activeModel?: string;
 }
 
 function buildPdfContext(pdfData: PdfData): string {
@@ -222,6 +223,7 @@ async function processWithGemini(
 
   let rawText = '';
   let lastErr: any = null;
+  let successfulModel = '';
 
   for (const modelName of candidateModels) {
     try {
@@ -236,6 +238,7 @@ async function processWithGemini(
       });
       if (res?.text) {
         rawText = res.text;
+        successfulModel = modelName;
         break;
       }
     } catch (err: any) {
@@ -247,7 +250,9 @@ async function processWithGemini(
   }
 
   if (!rawText) throw lastErr || new Error('Unable to connect to Gemini. Please try again.');
-  return parseAiResponse(rawText);
+  const parsed = parseAiResponse(rawText);
+  parsed.activeModel = successfulModel;
+  return parsed;
 }
 
 async function processWithGroq(
