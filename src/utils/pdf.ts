@@ -119,6 +119,28 @@ export async function searchAndReplaceText(
   const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
   const lowerFind = normalize(findText);
 
+  // Helper to extract the minimal changed core between find and replace
+  // e.g. "SUBMITTED TO: MRS. VAISHALI" -> "SUBMITTED TO: MR. VAISHALI" yields { diffFind: "MRS.", diffReplace: "MR." }
+  const extractDiff = (f: string, r: string) => {
+    const fWords = f.trim().split(/\s+/);
+    const rWords = r.trim().split(/\s+/);
+    while (fWords.length > 0 && rWords.length > 0 && fWords[0].toLowerCase() === rWords[0].toLowerCase()) {
+      fWords.shift();
+      rWords.shift();
+    }
+    while (fWords.length > 0 && rWords.length > 0 && fWords[fWords.length - 1].toLowerCase() === rWords[rWords.length - 1].toLowerCase()) {
+      fWords.pop();
+      rWords.pop();
+    }
+    return {
+      diffFind: fWords.join(' '),
+      diffReplace: rWords.join(' ')
+    };
+  };
+
+  const { diffFind, diffReplace } = extractDiff(findText, replaceText);
+  const coreFind = diffFind ? normalize(diffFind) : '';
+
   for (let pno = startP; pno <= endP; pno++) {
     const page = await pdf.getPage(pno);
     const textContent = await page.getTextContent();
@@ -126,31 +148,44 @@ export async function searchAndReplaceText(
 
     for (const item of textContent.items as any[]) {
       const str = item.str || '';
+      if (!str.trim()) continue;
       const normStr = normalize(str);
 
-      if (normStr.includes(lowerFind) || str.toLowerCase().includes(findText.toLowerCase())) {
+      // Match either full findText, raw string, or minimal core diff
+      const matchesFull = normStr.includes(lowerFind) || str.toLowerCase().includes(findText.toLowerCase());
+      const matchesCore = coreFind && normStr.includes(coreFind);
+
+      if (matchesFull || matchesCore) {
         const tx = item.transform[4];
         const ty = item.transform[5];
         const itemW = item.width || 60;
         const itemH = item.height || 14;
 
-        // Draw whiteout rectangle
+        // Draw whiteout rectangle over the item
         pdfLibPage.drawRectangle({
           x: tx - 2,
           y: ty - 2,
-          width: Math.max(itemW + 6, replaceText.length * 7),
+          width: Math.max(itemW + 8, replaceText.length * 7),
           height: itemH + 4,
           color: rgb(1, 1, 1),
         });
 
-        // Calculate replaced string cleanly
+        // Calculate replaced string
         let updatedStr = str;
-        try {
-          const escapedFind = findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const regex = new RegExp(escapedFind, 'gi');
-          updatedStr = str.replace(regex, replaceText);
-        } catch {
-          updatedStr = replaceText;
+        if (matchesFull) {
+          try {
+            const escaped = findText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            updatedStr = str.replace(new RegExp(escaped, 'gi'), replaceText);
+          } catch {
+            updatedStr = replaceText;
+          }
+        } else if (matchesCore && diffFind) {
+          try {
+            const escaped = diffFind.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            updatedStr = str.replace(new RegExp(escaped, 'gi'), diffReplace);
+          } catch {
+            updatedStr = replaceText;
+          }
         }
 
         const fontSize = Math.max(9, Math.min(16, itemH * 0.95));
@@ -168,9 +203,6 @@ export async function searchAndReplaceText(
   return await doc.save();
 }
 
-/**
- * Add manual text annotation or whiteout + replacement at specified point.
- */
 export async function overlayTextOnPage(
   pdfBytes: Uint8Array,
   pageNum: number,

@@ -145,6 +145,36 @@ export function detectQuickIntent(prompt: string, pdfData: PdfData): AiResult | 
     };
   }
 
+  // 8. General change / replace regex (handles typos like "chaneg", "replcae", "in pg 1, chaneg X to Y")
+  const changeRegex = /(?:in\s+pg\s*(\d+),?\s*)?(?:change|chaneg|replace|replcae|update)\s+([A-Za-z0-9\s:._'-]+?)\s+(?:to|with)\s+([A-Za-z0-9\s:._'-]+)$/i;
+  const changeMatch = clean.match(changeRegex);
+  if (changeMatch) {
+    const targetPage = changeMatch[1] ? parseInt(changeMatch[1], 10) : 1;
+    let findVal = changeMatch[2].trim();
+    let replaceVal = changeMatch[3].trim();
+
+    // Clean common prefixes from findVal (e.g., "submitted to" -> look for full instructor line on page 1)
+    const pText = pdfData.pages[targetPage - 1]?.text || pdfData.pages[0]?.text || '';
+    if (findVal.toLowerCase().includes('submitted to')) {
+      const teacherMatch = pText.match(/(?:SUBMITTED\s+TO:\s*)([A-Za-z\s.]+)/i);
+      if (teacherMatch) {
+        findVal = teacherMatch[1].trim(); // e.g. "MRS. VAISHALI" or "MS. AMRITA"
+      }
+    }
+
+    return {
+      message: `Replaced **"${findVal}"** with **"${replaceVal}"** on Page ${targetPage}!`,
+      action: 'search_replace',
+      params: { find: findVal, replace: replaceVal, targetPage }
+    };
+  }
+
+  // 9. Confirmations: "ok do it", "yes", "do it", "apply"
+  if (/^(ok\s*do\s*it|do\s*it|yes|apply|confirm|ok|proceed)$/i.test(lower)) {
+    // Look at previous assistant message for intent
+    return null; // Will cascade to LLM or use context
+  }
+
   return null;
 }
 
@@ -176,14 +206,15 @@ AVAILABLE ACTIONS YOU CAN TRIGGER:
 12. **merge** - Signal the interface to allow merging another PDF.
     Params: {}
 
-STRICT RELIABILITY & NON-DENIAL RULES:
+STRICT RELIABILITY, ACTION EXECUTION & NON-DENIAL RULES:
+- CRITICAL: WHEN THE USER ASKS TO CHANGE, REPLACE, ROTATE, WATERMARK, OR NUMBER PAGES, DO NOT JUST DESCRIBE IT IN TEXT! YOU MUST SET THE "action" FIELD TO THE RELEVANT TOOL (e.g. "search_replace", "add_watermark", etc.) WITH COMPLETE "params". NEVER SET "action": "none" WHEN A MODIFICATION IS REQUESTED!
+- If the user says "ok do it", "apply", "yes", or "confirm", examine the prior conversation context, determine what edit was discussed, and IMMEDIATELY TRIGGER THE ACTION!
+- In "search_replace", set "find" to the exact string found in the PDF text (e.g. "MRS. VAISHALI" or "NAME: HARENDRA PRATAP SINGH") and "replace" to the user's desired text.
 - NEVER say "I cannot edit this", "this page is an image/scanned", or ask vague clarification questions.
-- If asked to change or update anything, pick the closest existing text from the provided PDF context and trigger action "search_replace".
-- If the user provides a short command or typo (e.g., "1st page", "change roll", "name Harendra"), deduce the intended action and output the appropriate tool.
 - Always output clean JSON matching:
 {
-  "message": "Direct explanation of action taken.",
-  "action": "none|search_replace|add_watermark|add_header_footer|add_page_numbers|remove_pages|extract_pages|duplicate_page|add_blank_page|reorder_pages|rotate_pages|merge",
+  "message": "Direct explanation of action executed on the document.",
+  "action": "search_replace|add_watermark|add_header_footer|add_page_numbers|remove_pages|extract_pages|duplicate_page|add_blank_page|reorder_pages|rotate_pages|merge|none",
   "params": {}
 }`;
 
