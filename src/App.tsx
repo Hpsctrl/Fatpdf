@@ -4,21 +4,39 @@ import {
   Sparkles, ZoomIn, ZoomOut, ChevronLeft, ChevronRight,
   FileText, Trash2, RotateCw, Merge, FilePlus2, Stamp,
   Search, Type, Eraser, PenTool, Hash, Copy, Plus,
-  FileCode, FileSpreadsheet, Undo2, Redo2, Check, Scissors
+  FileCode, FileSpreadsheet, Undo2, Redo2, Check, Scissors, Scan,
+  Sun, Moon, Monitor, Eye
 } from 'lucide-react';
 import {
   parsePdfFile, removePages, extractPages, reorderPages, rotatePages,
   addWatermark, addHeaderFooter, addPageNumbers, duplicatePage, addBlankPage,
-  searchAndReplaceText, overlayTextOnPage, redactAreaOnPage, addSignatureToPage,
-  mergePdfs, downloadPdf, exportPdfAsTxt, exportPdfAsWord
+  searchAndReplaceText, searchAndReplaceTextResult, overlayTextOnPage, redactAreaOnPage, addSignatureToPage,
+  mergePdfs, downloadPdf, exportPdfAsTxt, exportPdfAsWord,
+  convertImageFileToPdf, extractPageAsBase64Image, changeTextFont
 } from './utils/pdf';
-import type { PdfData } from './utils/pdf';
-import { processAIRequest } from './utils/ai';
+import type { PdfData, PdfTextItem, FontOptions } from './utils/pdf';
+import { processAIRequest, runOnlineOcr } from './utils/ai';
 import type { AiProvider, ChatMessage } from './utils/ai';
 import PdfViewer from './components/PdfViewer';
 import { SignatureModal } from './components/SignatureModal';
 
 export const APP_VERSION = 'v1.1.0';
+export type AppTheme = 'adaptive' | 'light' | 'dark' | 'pearl';
+
+const APPLE_GREETINGS = [
+  { word: 'hello', lang: 'English', sub: 'Welcome', isScript: true },
+  { word: 'bonjour', lang: 'Français', sub: 'Bienvenue', isScript: true },
+  { word: 'hola', lang: 'Español', sub: 'Bienvenido', isScript: true },
+  { word: 'ciao', lang: 'Italiano', sub: 'Benvenuto', isScript: true },
+  { word: 'hallo', lang: 'Deutsch', sub: 'Willkommen', isScript: true },
+  { word: 'olá', lang: 'Português', sub: 'Bem-vindo', isScript: true },
+  { word: 'नमस्ते', lang: 'Hindi', sub: 'स्वागत है', isScript: false },
+  { word: 'こんにちは', lang: 'Japanese', sub: 'ようこそ', isScript: false },
+  { word: '你好', lang: 'Chinese', sub: '欢迎', isScript: false },
+  { word: '안녕하세요', lang: 'Korean', sub: '환영합니다', isScript: false },
+  { word: 'مرحبا', lang: 'Arabic', sub: 'أهلاً وسهلاً', isScript: false },
+  { word: 'привет', lang: 'Russian', sub: 'Добро пожаловать', isScript: false },
+];
 
 type ToolCategory = 'ai' | 'edit' | 'pages' | 'export';
 
@@ -98,6 +116,11 @@ const App: React.FC = () => {
   const [pendingTextCoords, setPendingTextCoords] = useState<{ x: number; y: number; pageNum: number } | null>(null);
   const [overlayInputText, setOverlayInputText] = useState('');
   const [whiteoutBeforeAdd, setWhiteoutBeforeAdd] = useState(true);
+  const [overlayFontFamily, setOverlayFontFamily] = useState<string>('helvetica');
+  const [overlayFontSize, setOverlayFontSize] = useState<number>(14);
+  const [overlayIsBold, setOverlayIsBold] = useState<boolean>(true);
+  const [overlayIsItalic, setOverlayIsItalic] = useState<boolean>(false);
+  const [overlayColor, setOverlayColor] = useState<string>('#000000');
 
   // AI State
   const [provider, setProvider] = useState<AiProvider>(() => {
@@ -114,6 +137,38 @@ const App: React.FC = () => {
   );
   const [activeModelName, setActiveModelName] = useState<string>('gemini-3.6-flash');
   const [showSettings, setShowSettings] = useState(false);
+
+  // Theme State (adaptive | light | dark | pearl)
+  const [theme, setTheme] = useState<AppTheme>(() => {
+    return (localStorage.getItem('ai_pdf_theme') as AppTheme) || 'adaptive';
+  });
+
+  useEffect(() => {
+    const applyTheme = () => {
+      const root = document.documentElement;
+      if (theme === 'adaptive') {
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        root.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+      } else {
+        root.setAttribute('data-theme', theme);
+      }
+    };
+
+    applyTheme();
+
+    if (theme === 'adaptive' && window.matchMedia) {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handleChange = () => applyTheme();
+      mediaQuery.addEventListener('change', handleChange);
+      return () => mediaQuery.removeEventListener('change', handleChange);
+    }
+  }, [theme]);
+
+  const handleThemeChange = (newTheme: AppTheme) => {
+    setTheme(newTheme);
+    localStorage.setItem('ai_pdf_theme', newTheme);
+  };
+
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
   const [prompt, setPrompt] = useState('');
   const [isDragActive, setIsDragActive] = useState(false);
@@ -124,10 +179,21 @@ const App: React.FC = () => {
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Random Apple Hello greeting chosen on each load
+  const [randomGreeting] = useState(() => {
+    const idx = Math.floor(Math.random() * APPLE_GREETINGS.length);
+    return APPLE_GREETINGS[idx];
+  });
+
   useEffect(() => {
-    const t1 = setTimeout(() => setFadeLoading(true), 400);
-    const t2 = setTimeout(() => setIsEntering(false), 800);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    // Exactly 1.0 second Apple Hello animation (0.8s animated reveal, 0.2s fade)
+    const t1 = setTimeout(() => setFadeLoading(true), 800);
+    const t2 = setTimeout(() => setIsEntering(false), 1000);
+
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, []);
 
   useEffect(() => {
@@ -194,22 +260,107 @@ const App: React.FC = () => {
     setChatHistory(prev => [...prev, { role: 'ai', text: '🔁 Redid change.' }]);
   };
 
+  /* ─── Online OCR Handler ─── */
+  const handleRunOcr = async (targetPageNum?: number, customData?: PdfData) => {
+    const activeDoc = customData || pdfData;
+    if (!activeDoc) return;
+    const pageNum = targetPageNum || currentPage;
+    if (pageNum < 1 || pageNum > activeDoc.totalPages) return;
+
+    try {
+      setLoading(true);
+      setChatHistory(prev => [
+        ...prev,
+        { role: 'system', text: `⚡ Running Online OCR on Page ${pageNum} using AI Vision...` }
+      ]);
+
+      const { base64 } = await extractPageAsBase64Image(activeDoc.rawBytes, pageNum, 2.0);
+      const pageInfo = activeDoc.pages[pageNum - 1];
+      const ocrResult = await runOnlineOcr(
+        base64,
+        pageInfo.width,
+        pageInfo.height,
+        provider,
+        geminiKey,
+        groqKey
+      );
+
+      const updatedPages = [...activeDoc.pages];
+      updatedPages[pageNum - 1] = {
+        ...pageInfo,
+        text: ocrResult.fullText,
+        items: ocrResult.items,
+        isScanned: false,
+        ocrApplied: true,
+      };
+
+      const updatedDoc: PdfData = {
+        ...activeDoc,
+        pages: updatedPages,
+      };
+
+      setPdfData(updatedDoc);
+
+      setChatHistory(prev => [
+        ...prev,
+        {
+          role: 'ai',
+          text: `✅ **Online OCR Completed for Page ${pageNum}!**\n\n**Extracted Document Text:**\n${ocrResult.fullText.substring(0, 350)}${ocrResult.fullText.length > 350 ? '...' : ''}\n\n*Text and coordinate boxes are now indexed. You can search, replace, watermark, or edit text on this image directly!*`
+        }
+      ]);
+    } catch (err: any) {
+      setChatHistory(prev => [
+        ...prev,
+        { role: 'ai', text: `❌ Online OCR Notice: ${err.message || String(err)}` }
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   /* ─── File Handling ─── */
   const handleFileUpload = async (file: File) => {
     try {
       setLoading(true);
-      const data = await parsePdfFile(file);
+      let targetFile: File | { name: string; arrayBuffer: () => Promise<ArrayBuffer> } = file;
+      const isImg = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(file.name);
+
+      if (isImg) {
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'system', text: `🖼️ Document image detected ("${file.name}"). Converting to PDF format...` }
+        ]);
+        const convertedBytes = await convertImageFileToPdf(file);
+        const pdfFileName = file.name.replace(/\.[^.]+$/i, '') + '.pdf';
+        targetFile = new File([convertedBytes as any], pdfFileName, { type: 'application/pdf' });
+      }
+
+      const data = await parsePdfFile(targetFile);
       setPdfData(data);
       setCurrentPage(1);
       setZoom(1.2);
       setHistory([]);
       setRedoStack([]);
-      setChatHistory([{
-        role: 'system',
-        text: `Loaded "${data.fileName}" — ${data.totalPages} pages.`
-      }]);
-    } catch (err) {
-      alert('Failed to parse PDF file.');
+
+      if (isImg) {
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'system', text: `✨ Converted "${file.name}" to document! Running Online OCR to extract text...` }
+        ]);
+        setTimeout(() => {
+          handleRunOcr(1, data);
+        }, 120);
+      } else {
+        const hasScanned = data.pages.some(p => p.isScanned);
+        setChatHistory([
+          {
+            role: 'system',
+            text: `Loaded "${data.fileName}" — ${data.totalPages} pages.${hasScanned ? ' 📸 Note: Scanned/image page detected. Use "Online OCR" to recognize and edit text.' : ''}`
+          }
+        ]);
+      }
+    } catch (err: any) {
+      alert('Failed to parse file: ' + (err.message || String(err)));
       console.error(err);
     } finally {
       setLoading(false);
@@ -238,14 +389,23 @@ const App: React.FC = () => {
     try {
       setLoading(true);
       const targetPage = searchAllPages ? undefined : currentPage;
-      const newBytes = await searchAndReplaceText(
+      const ocrMap = new Map<number, PdfTextItem[]>();
+      pdfData.pages.forEach(p => {
+        if (p.items && p.items.length > 0) ocrMap.set(p.pageNumber, p.items);
+      });
+      const replaceRes = await searchAndReplaceTextResult(
         pdfData.rawBytes,
         searchFind.trim(),
         searchReplace,
-        targetPage
+        targetPage,
+        ocrMap
       );
+      if (replaceRes.count === 0) {
+        alert(`No matches found for "${searchFind}". If this is a scanned document or screenshot, please click Online OCR first.`);
+        return;
+      }
       await updatePdfStateWithHistory(
-        newBytes,
+        replaceRes.pdfBytes,
         `Replaced "${searchFind}" with "${searchReplace}" ${targetPage ? `on page ${targetPage}` : 'across all pages'}`
       );
       setShowSearchModal(false);
@@ -316,8 +476,12 @@ const App: React.FC = () => {
         pendingTextCoords.x,
         pendingTextCoords.y,
         overlayInputText.trim(),
-        13,
-        whiteoutBeforeAdd
+        overlayFontSize,
+        whiteoutBeforeAdd,
+        overlayColor,
+        overlayFontFamily,
+        overlayIsBold,
+        overlayIsItalic
       );
       await updatePdfStateWithHistory(
         newBytes,
@@ -363,20 +527,77 @@ const App: React.FC = () => {
 
   /* ─── AI Chat & Unified Action Dispatcher ─── */
   const applyAction = async (action: string, params: Record<string, any>) => {
+    if (action === 'set_theme') {
+      const targetTheme = (params.theme || 'dark') as AppTheme;
+      handleThemeChange(targetTheme);
+      return;
+    }
     if (!pdfData) return;
     try {
       setLoading(true);
       let newBytes: Uint8Array;
 
       switch (action) {
-        case 'search_replace':
-          newBytes = await searchAndReplaceText(
+        case 'set_theme':
+          handleThemeChange((params.theme || 'dark') as AppTheme);
+          return;
+        case 'run_ocr':
+          await handleRunOcr(params.page || currentPage);
+          return;
+        case 'change_font': {
+          const ocrMap = new Map<number, PdfTextItem[]>();
+          pdfData.pages.forEach(p => {
+            if (p.items && p.items.length > 0) ocrMap.set(p.pageNumber, p.items);
+          });
+          const target = params.targetText || params.text || params.find || '';
+          newBytes = await changeTextFont(
+            pdfData.rawBytes,
+            target,
+            {
+              family: params.fontFamily || params.family,
+              size: params.fontSize || params.size,
+              bold: params.bold,
+              italic: params.italic,
+              color: params.color
+            },
+            params.targetPage,
+            ocrMap
+          );
+          break;
+        }
+        case 'search_replace': {
+          const ocrMap = new Map<number, PdfTextItem[]>();
+          pdfData.pages.forEach(p => {
+            if (p.items && p.items.length > 0) ocrMap.set(p.pageNumber, p.items);
+          });
+          const targetP = params.targetPage || (params.allPages ? undefined : currentPage);
+          const replaceRes = await searchAndReplaceTextResult(
             pdfData.rawBytes,
             params.find || '',
             params.replace || '',
-            params.targetPage
+            targetP,
+            ocrMap,
+            {
+              family: params.fontFamily || params.family,
+              size: params.fontSize || params.size,
+              bold: params.bold,
+              italic: params.italic,
+              color: params.color
+            }
           );
+          if (replaceRes.count === 0) {
+            setChatHistory(prev => [
+              ...prev.slice(0, -1),
+              {
+                role: 'ai',
+                text: `⚠️ Could not find **"${params.find}"** on Page ${targetP || 'document'}. If this text is inside a scanned image, please click **Online OCR** first so I can recognize and edit it.`
+              }
+            ]);
+            return;
+          }
+          newBytes = replaceRes.pdfBytes;
           break;
+        }
         case 'add_watermark':
           newBytes = await addWatermark(
             pdfData.rawBytes,
@@ -452,9 +673,41 @@ const App: React.FC = () => {
     try {
       setLoading(true);
       await new Promise(r => setTimeout(r, 40));
+
+      let currentDoc = pdfData;
+      const currPageInfo = pdfData.pages[currentPage - 1];
+      if (currPageInfo?.isScanned && !currPageInfo?.ocrApplied) {
+        try {
+          setChatHistory(prev => [
+            ...prev,
+            { role: 'system', text: `📸 Image/scanned page detected. Running Online OCR so AI can read and edit it...` }
+          ]);
+          const { base64 } = await extractPageAsBase64Image(pdfData.rawBytes, currentPage, 2.0);
+          const ocrResult = await runOnlineOcr(
+            base64,
+            currPageInfo.width,
+            currPageInfo.height,
+            provider,
+            geminiKey,
+            groqKey
+          );
+          const updatedPages = [...pdfData.pages];
+          updatedPages[currentPage - 1] = {
+            ...currPageInfo,
+            text: ocrResult.fullText,
+            items: ocrResult.items,
+            isScanned: false,
+            ocrApplied: true,
+          };
+          currentDoc = { ...pdfData, pages: updatedPages };
+          setPdfData(currentDoc);
+        } catch (ocrErr) {
+          console.warn('Auto OCR before AI prompt warning:', ocrErr);
+        }
+      }
       
       const result = await processAIRequest(
-        chatHistory, userMsg, pdfData, provider, geminiKey, groqKey, groqModel
+        chatHistory, userMsg, currentDoc, provider, geminiKey, groqKey, groqModel
       );
 
       setChatHistory(prev => [...prev, { role: 'ai', text: result.message }]);
@@ -489,28 +742,94 @@ const App: React.FC = () => {
     e.preventDefault();
     setIsDragActive(false);
     const file = e.dataTransfer.files?.[0];
-    if (file && file.type === 'application/pdf') await handleFileUpload(file);
+    if (file) {
+      const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+      const isImg = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(file.name);
+      if (isPdf || isImg) {
+        await handleFileUpload(file);
+      }
+    }
   };
 
   return (
     <>
       {isEntering && (
         <div className={`loading-screen ${fadeLoading ? 'fade-out' : ''}`}>
-          <div className="h-logo">H</div>
+          <div className="apple-hello-stage">
+            <div className="apple-ambient-glow" />
+            <div className={`apple-hello-text ${randomGreeting.isScript ? 'apple-script' : 'apple-universal'}`}>
+              {randomGreeting.word}
+            </div>
+            <svg className="apple-hello-stroke" viewBox="0 0 220 22" fill="none">
+              <path
+                d="M 12 14 Q 75 4, 130 14 T 208 8"
+                stroke="url(#appleUnderlineGrad)"
+                strokeWidth="3.2"
+                strokeLinecap="round"
+              />
+              <defs>
+                <linearGradient id="appleUnderlineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="#818cf8" />
+                  <stop offset="50%" stopColor="#c084fc" />
+                  <stop offset="100%" stopColor="#38bdf8" />
+                </linearGradient>
+              </defs>
+            </svg>
+            <div className="apple-lang-badge">
+              <span className="apple-dot" />
+              <span>{randomGreeting.lang} • {randomGreeting.sub}</span>
+            </div>
+          </div>
         </div>
       )}
       <div className="app-container">
         <main className="main-content glass-panel">
-          <header>
+          <header className="app-header">
             <div className="logo">
-              <FileText size={24} />
-              AI PDF Editor
+              <FileText size={22} />
+              <span className="logo-title">FatPDF</span>
             </div>
 
-            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="header-actions">
+              {/* Theme Switcher Toggle (Adaptive, Light, Dark, Pearl) */}
+              <div className="theme-toggle-group" title="Theme (Adaptive, Light, Dark, Pearl)">
+                <button
+                  className={`theme-btn ${theme === 'adaptive' ? 'active' : ''}`}
+                  onClick={() => handleThemeChange('adaptive')}
+                  title="Adaptive (Sync with OS)"
+                  aria-label="Adaptive Mode"
+                >
+                  <Monitor size={14} />
+                </button>
+                <button
+                  className={`theme-btn ${theme === 'light' ? 'active' : ''}`}
+                  onClick={() => handleThemeChange('light')}
+                  title="Light Mode"
+                  aria-label="Light Mode"
+                >
+                  <Sun size={14} />
+                </button>
+                <button
+                  className={`theme-btn ${theme === 'dark' ? 'active' : ''}`}
+                  onClick={() => handleThemeChange('dark')}
+                  title="Dark Mode"
+                  aria-label="Dark Mode"
+                >
+                  <Moon size={14} />
+                </button>
+                <button
+                  className={`theme-btn ${theme === 'pearl' ? 'active' : ''}`}
+                  onClick={() => handleThemeChange('pearl')}
+                  title="Pearl Mode (Eye-Care Warm Sepia)"
+                  aria-label="Pearl Mode"
+                >
+                  <Eye size={14} />
+                </button>
+              </div>
+
               {pdfData && (
                 <>
-                  <div className="file-info-badge">
+                  <div className="file-info-badge hide-mobile">
                     <span className="file-name">{pdfData.fileName}</span>
                     <span>{pdfData.totalPages} pg</span>
                   </div>
@@ -521,7 +840,7 @@ const App: React.FC = () => {
                     disabled={history.length === 0}
                     title="Undo (Ctrl+Z)"
                   >
-                    <Undo2 size={16} />
+                    <Undo2 size={15} />
                   </button>
                   <button
                     className="btn-icon"
@@ -529,22 +848,22 @@ const App: React.FC = () => {
                     disabled={redoStack.length === 0}
                     title="Redo (Ctrl+Y)"
                   >
-                    <Redo2 size={16} />
+                    <Redo2 size={15} />
                   </button>
                 </>
               )}
 
               <button className="btn-icon" onClick={() => setShowSettings(true)} title="Settings">
-                <Settings size={17} />
+                <Settings size={16} />
               </button>
 
               {pdfData && (
                 <>
-                  <button className="btn btn-secondary" onClick={() => { setPdfData(null); setChatHistory([]); setCurrentPage(1); }}>
-                    <FilePlus2 size={14} /> New
+                  <button className="btn-icon hide-mobile" onClick={() => { setPdfData(null); setChatHistory([]); setCurrentPage(1); }} title="New Document">
+                    <FilePlus2 size={15} />
                   </button>
-                  <button className="btn" onClick={handleExportPdf}>
-                    <Download size={14} /> Export PDF
+                  <button className="btn btn-sm" onClick={handleExportPdf} style={{ padding: '4px 10px', fontSize: '0.8rem' }}>
+                    <Download size={14} /> <span className="hide-mobile">Export</span>
                   </button>
                 </>
               )}
@@ -628,6 +947,14 @@ const App: React.FC = () => {
                 style={{ padding: '4px 10px' }}
               >
                 <PenTool size={14} /> Sign Document
+              </button>
+              <button
+                className={`btn btn-secondary ${pdfData.pages[currentPage - 1]?.ocrApplied ? 'active' : ''}`}
+                onClick={() => handleRunOcr(currentPage)}
+                style={{ padding: '4px 10px' }}
+                title="Extract and edit text from scanned or screenshot pages using Online OCR"
+              >
+                <Scan size={14} /> {pdfData.pages[currentPage - 1]?.ocrApplied ? 'OCR Done' : 'Online OCR'}
               </button>
             </div>
           )}
@@ -717,13 +1044,13 @@ const App: React.FC = () => {
               onClick={() => fileInputRef.current?.click()}
             >
               <UploadCloud size={46} className="upload-icon" />
-              <h2 style={{ fontSize: '1.25rem', color: '#1e1b4b' }}>Upload your PDF</h2>
+              <h2 style={{ fontSize: '1.25rem', color: '#1e1b4b' }}>Upload PDF or Document Image</h2>
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                Drag & drop or click to browse a .pdf file
+                Drag & drop or click to browse .pdf, .png, .jpg, or screenshot
               </p>
               <input
                 type="file"
-                accept=".pdf"
+                accept=".pdf,image/png,image/jpeg,image/webp,image/*"
                 ref={fileInputRef}
                 style={{ display: 'none' }}
                 onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
@@ -732,63 +1059,83 @@ const App: React.FC = () => {
           ) : (
             <div className="pdf-viewer-container">
               <div className="pdf-toolbar">
-                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1}>
-                  <ChevronLeft size={15} />
-                </button>
-                <span>Page {currentPage} / {pdfData.totalPages}</span>
-                <button onClick={() => setCurrentPage(p => Math.min(pdfData.totalPages, p + 1))} disabled={currentPage >= pdfData.totalPages}>
-                  <ChevronRight size={15} />
-                </button>
-                <div style={{ width: 1, height: 16, background: 'var(--panel-border)' }} />
-                <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} title="Zoom Out">
-                  <ZoomOut size={14} />
-                </button>
-                <span className="zoom-display">{Math.round(zoom * 100)}%</span>
-                <button onClick={() => setZoom(z => Math.min(3, z + 0.2))} title="Zoom In">
-                  <ZoomIn size={14} />
-                </button>
-                <div style={{ width: 1, height: 16, background: 'var(--panel-border)' }} />
+                <div className="pdf-toolbar-nav">
+                  <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1}>
+                    <ChevronLeft size={15} />
+                  </button>
+                  <span>{currentPage} / {pdfData.totalPages}</span>
+                  <button onClick={() => setCurrentPage(p => Math.min(pdfData.totalPages, p + 1))} disabled={currentPage >= pdfData.totalPages}>
+                    <ChevronRight size={15} />
+                  </button>
+                  <div style={{ width: 1, height: 16, background: 'var(--panel-border)' }} />
+                  <button onClick={() => setZoom(z => Math.max(0.5, z - 0.2))} title="Zoom Out">
+                    <ZoomOut size={14} />
+                  </button>
+                  <span className="zoom-display">{Math.round(zoom * 100)}%</span>
+                  <button onClick={() => setZoom(z => Math.min(3, z + 0.2))} title="Zoom In">
+                    <ZoomIn size={14} />
+                  </button>
+                </div>
 
-                <button
-                  className={canvasTool === 'text' ? 'active-tool' : ''}
-                  onClick={() => setCanvasTool(t => t === 'text' ? 'select' : 'text')}
-                  title="Click on canvas to type text"
-                >
-                  <Type size={14} /> Type Text
-                </button>
-                <button
-                  className={canvasTool === 'redact' ? 'active-tool' : ''}
-                  onClick={() => setCanvasTool(t => t === 'redact' ? 'select' : 'redact')}
-                  title="Draw whiteout box over content"
-                >
-                  <Eraser size={14} /> Whiteout Box
-                </button>
-                <button
-                  onClick={() => setShowWatermarkModal(true)}
-                  title="Add Watermark"
-                >
-                  <Stamp size={14} /> Watermark
-                </button>
-                <button
-                  onClick={() => setShowSearchModal(true)}
-                  title="Find and replace text"
-                >
-                  <Search size={14} /> Find & Replace
-                </button>
-                <button
-                  onClick={() => {
-                    if (pdfData.totalPages <= 1) return;
-                    if (window.confirm(`Delete page ${currentPage}?`)) {
-                      applyAction('remove_pages', { pages: [currentPage] });
-                      setChatHistory(prev => [...prev, { role: 'ai', text: `Removed page ${currentPage}.` }]);
-                    }
-                  }}
-                  title="Delete Current Page"
-                  disabled={pdfData.totalPages <= 1}
-                >
-                  <Trash2 size={14} />
-                </button>
+                <div className="pdf-toolbar-tools">
+                  <button
+                    className={canvasTool === 'text' ? 'active-tool' : ''}
+                    onClick={() => setCanvasTool(t => t === 'text' ? 'select' : 'text')}
+                    title="Click on canvas to type text"
+                  >
+                    <Type size={14} /> Type Text
+                  </button>
+                  <button
+                    className={canvasTool === 'redact' ? 'active-tool' : ''}
+                    onClick={() => setCanvasTool(t => t === 'redact' ? 'select' : 'redact')}
+                    title="Draw whiteout box over content"
+                  >
+                    <Eraser size={14} /> Whiteout
+                  </button>
+                  <button
+                    className={pdfData.pages[currentPage - 1]?.ocrApplied ? 'active-tool' : ''}
+                    onClick={() => handleRunOcr(currentPage)}
+                    title="Run Online OCR on this page to recognize and edit image text"
+                    disabled={loading}
+                  >
+                    <Scan size={14} /> {pdfData.pages[currentPage - 1]?.ocrApplied ? 'OCR Done' : 'Online OCR'}
+                  </button>
+                  <button
+                    onClick={() => setShowWatermarkModal(true)}
+                    title="Add Watermark"
+                  >
+                    <Stamp size={14} /> Watermark
+                  </button>
+                  <button
+                    onClick={() => setShowSearchModal(true)}
+                    title="Find and replace text"
+                  >
+                    <Search size={14} /> Replace
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (pdfData.totalPages <= 1) return;
+                      if (window.confirm(`Delete page ${currentPage}?`)) {
+                        applyAction('remove_pages', { pages: [currentPage] });
+                        setChatHistory(prev => [...prev, { role: 'ai', text: `Removed page ${currentPage}.` }]);
+                      }
+                    }}
+                    title="Delete Current Page"
+                    disabled={pdfData.totalPages <= 1}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               </div>
+
+              {pdfData.pages[currentPage - 1]?.isScanned && !pdfData.pages[currentPage - 1]?.ocrApplied && (
+                <div className="scanned-page-banner">
+                  <span>📸 Scanned or screenshot image detected on Page {currentPage}. Run Online OCR to extract and edit its text.</span>
+                  <button className="btn-banner-action" onClick={() => handleRunOcr(currentPage)} disabled={loading}>
+                    <Scan size={14} /> Run Online OCR
+                  </button>
+                </div>
+              )}
 
               {canvasTool !== 'select' && (
                 <div style={{
@@ -871,17 +1218,19 @@ const App: React.FC = () => {
             <div className="messages">
               {chatHistory.length === 0 && (
                 <div className="message ai">
-                  <div style={{ marginBottom: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', color: '#1e1b4b' }}>
+                  <div style={{ marginBottom: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-main)' }}>
                     <Sparkles size={16} color="var(--primary)" /> How can I help with your PDF?
                   </div>
-                  Upload a document, then ask me to summarize it, find answers, replace text, add watermarks, remove pages, or reorder pages.
+                  Upload a document, then ask me to summarize it, find answers, replace text, change fonts, add watermarks, remove pages, or reorder pages.
                   {pdfData && (
                     <div className="quick-suggestions">
                       <button type="button" className="suggestion-chip" onClick={() => setPrompt('Summarize this document')}>📝 Summarize</button>
                       <button type="button" className="suggestion-chip" onClick={() => setPrompt('Change name on page 1 to Harendra Pratap Singh')}>✏️ Change Name</button>
+                      <button type="button" className="suggestion-chip" onClick={() => setPrompt('Change font of name to Times Roman Bold 16')}>🔤 Edit Font</button>
                       <button type="button" className="suggestion-chip" onClick={() => setPrompt('Add watermark Harendra Pratap Singh ERP 252681 on page 1 only')}>💧 Watermark Page 1</button>
                       <button type="button" className="suggestion-chip" onClick={() => setPrompt('Add page numbers at bottom')}>🔢 Number Pages</button>
-                      <button type="button" className="suggestion-chip" onClick={() => setPrompt('What are the key takeaways from this document?')}>💡 Key Takeaways</button>
+                      <button type="button" className="suggestion-chip" onClick={() => setPrompt('Switch to dark mode')}>🌙 Dark Mode</button>
+                      <button type="button" className="suggestion-chip" onClick={() => setPrompt('Switch to pearl mode')}>📜 Pearl Mode</button>
                     </div>
                   )}
                 </div>
@@ -902,7 +1251,7 @@ const App: React.FC = () => {
             </div>
 
             {mergeWaiting && (
-              <div style={{ padding: '0.75rem 1rem', background: '#eef2ff', borderTop: '1px solid #c7d2fe' }}>
+              <div style={{ padding: '0.75rem 1rem', background: 'var(--primary-light)', borderTop: '1px solid var(--panel-border)' }}>
                 <div style={{ fontSize: '0.82rem', color: 'var(--primary)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600 }}>
                   <Merge size={14} /> Select a PDF to merge:
                 </div>
@@ -923,11 +1272,14 @@ const App: React.FC = () => {
             )}
 
             {pdfData && (
-              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '6px 12px', background: '#f8fafc', borderTop: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>
+              <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '6px 12px', background: 'var(--card-bg)', borderTop: '1px solid var(--panel-border)', whiteSpace: 'nowrap' }}>
+                <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt(`Online OCR on Page ${currentPage}`)}>⚡ Online OCR</button>
                 <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Summarize Page 1')}>📑 Page 1 Info</button>
                 <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Change student name on page 1 to Harendra Pratap Singh')}>✏️ Change Name</button>
-                <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Add watermark HARENDRA PRATAP SINGH 252681 on page 1')}>💧 Watermark Page 1</button>
+                <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Change font of name to Times Roman Bold 16')}>🔤 Change Font</button>
                 <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Number all pages at bottom-center')}>🔢 Page Numbers</button>
+                <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Switch to dark mode')}>🌙 Dark Mode</button>
+                <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Switch to pearl mode')}>📜 Pearl Mode</button>
               </div>
             )}
             <form className="chat-input-wrapper" onSubmit={handleSendPrompt}>
@@ -967,6 +1319,66 @@ const App: React.FC = () => {
                   onKeyDown={(e) => { if (e.key === 'Enter') handleApplyOverlayText(); }}
                 />
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px', gap: 10, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Font:</label>
+                  <select
+                    value={overlayFontFamily}
+                    onChange={(e) => setOverlayFontFamily(e.target.value)}
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  >
+                    <option value="helvetica">Helvetica (Sans)</option>
+                    <option value="times">Times Roman (Serif)</option>
+                    <option value="courier">Courier (Mono)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>Size (pt):</label>
+                  <input
+                    type="number"
+                    min="8"
+                    max="72"
+                    value={overlayFontSize}
+                    onChange={(e) => setOverlayFontSize(Math.max(6, parseInt(e.target.value, 10) || 12))}
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: 6, border: '1px solid #cbd5e1', fontSize: '0.85rem' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    type="button"
+                    className={`btn btn-secondary ${overlayIsBold ? 'active' : ''}`}
+                    onClick={() => setOverlayIsBold(b => !b)}
+                    style={{ fontWeight: 800, padding: '4px 10px', fontSize: '0.85rem' }}
+                    title="Toggle Bold"
+                  >
+                    B
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-secondary ${overlayIsItalic ? 'active' : ''}`}
+                    onClick={() => setOverlayIsItalic(i => !i)}
+                    style={{ fontStyle: 'italic', padding: '4px 10px', fontSize: '0.85rem' }}
+                    title="Toggle Italic"
+                  >
+                    I
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Color:</span>
+                  <input
+                    type="color"
+                    value={overlayColor}
+                    onChange={(e) => setOverlayColor(e.target.value)}
+                    style={{ width: 34, height: 30, padding: 0, border: '1px solid #cbd5e1', borderRadius: 4, cursor: 'pointer' }}
+                  />
+                </div>
+              </div>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
                 <input
                   type="checkbox"
@@ -1136,6 +1548,46 @@ const App: React.FC = () => {
           <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
             <div className="modal">
               <h2 className="modal-title">Settings</h2>
+
+              <div style={{ marginBottom: '1.2rem' }}>
+                <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
+                  UI Theme Mode
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className={`btn btn-secondary ${theme === 'adaptive' ? 'active' : ''}`}
+                    onClick={() => handleThemeChange('adaptive')}
+                    style={{ fontSize: '0.78rem', padding: '6px 8px', justifyContent: 'flex-start' }}
+                  >
+                    <Monitor size={14} /> Adaptive (OS)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-secondary ${theme === 'light' ? 'active' : ''}`}
+                    onClick={() => handleThemeChange('light')}
+                    style={{ fontSize: '0.78rem', padding: '6px 8px', justifyContent: 'flex-start' }}
+                  >
+                    <Sun size={14} /> Light Mode
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-secondary ${theme === 'dark' ? 'active' : ''}`}
+                    onClick={() => handleThemeChange('dark')}
+                    style={{ fontSize: '0.78rem', padding: '6px 8px', justifyContent: 'flex-start' }}
+                  >
+                    <Moon size={14} /> Dark Mode
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-secondary ${theme === 'pearl' ? 'active' : ''}`}
+                    onClick={() => handleThemeChange('pearl')}
+                    style={{ fontSize: '0.78rem', padding: '6px 8px', justifyContent: 'flex-start' }}
+                  >
+                    <Eye size={14} /> Pearl Mode (Eye Care)
+                  </button>
+                </div>
+              </div>
 
               <div style={{ marginBottom: '1rem' }}>
                 <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>AI Provider</label>
