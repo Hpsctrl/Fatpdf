@@ -135,7 +135,9 @@ const App: React.FC = () => {
   const [groqModel, setGroqModel] = useState(() =>
     localStorage.getItem('ai_pdf_groq_model') || 'llama-3.3-70b-versatile'
   );
-  const [activeModelName, setActiveModelName] = useState<string>('gemini-3.6-flash');
+  const [activeModelName, setActiveModelName] = useState<string>(() =>
+    localStorage.getItem('ai_pdf_gemini_model') || 'gemini-3.6-flash'
+  );
   const [showSettings, setShowSettings] = useState(false);
 
   // Theme State (adaptive | light | dark | pearl)
@@ -282,7 +284,8 @@ const App: React.FC = () => {
         pageInfo.height,
         provider,
         geminiKey,
-        groqKey
+        groqKey,
+        activeModelName
       );
 
       const updatedPages = [...activeDoc.pages];
@@ -309,9 +312,16 @@ const App: React.FC = () => {
         }
       ]);
     } catch (err: any) {
+      let msg = err?.message || String(err);
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed?.error?.message) {
+          msg = parsed.error.message;
+        }
+      } catch {}
       setChatHistory(prev => [
         ...prev,
-        { role: 'ai', text: `❌ Online OCR Notice: ${err.message || String(err)}` }
+        { role: 'ai', text: `❌ Online OCR Notice: ${msg}` }
       ]);
     } finally {
       setLoading(false);
@@ -689,7 +699,8 @@ const App: React.FC = () => {
             currPageInfo.height,
             provider,
             geminiKey,
-            groqKey
+            groqKey,
+            activeModelName
           );
           const updatedPages = [...pdfData.pages];
           updatedPages[currentPage - 1] = {
@@ -707,8 +718,12 @@ const App: React.FC = () => {
       }
       
       const result = await processAIRequest(
-        chatHistory, userMsg, currentDoc, provider, geminiKey, groqKey, groqModel
+        chatHistory, userMsg, currentDoc, provider, geminiKey, groqKey, groqModel, activeModelName
       );
+
+      if (result.activeModel) {
+        setActiveModelName(result.activeModel);
+      }
 
       setChatHistory(prev => [...prev, { role: 'ai', text: result.message }]);
 
@@ -1616,21 +1631,40 @@ const App: React.FC = () => {
               </div>
 
               {provider === 'gemini' ? (
-                <div className="form-group">
-                  <label>Google Gemini API Key</label>
-                  <input
-                    type="password"
-                    placeholder="AIzaSy..."
-                    value={geminiKey}
-                    onChange={(e) => { setGeminiKey(e.target.value); localStorage.setItem('ai_pdf_gemini_key', e.target.value); }}
-                  />
-                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: 1.4 }}>
-                    Free key from{' '}
-                    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>
-                      Google AI Studio
-                    </a>
-                  </p>
-                </div>
+                <>
+                  <div className="form-group">
+                    <label>Google Gemini API Key</label>
+                    <input
+                      type="password"
+                      placeholder="AIzaSy..."
+                      value={geminiKey}
+                      onChange={(e) => { setGeminiKey(e.target.value); localStorage.setItem('ai_pdf_gemini_key', e.target.value); }}
+                    />
+                    <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: 1.4 }}>
+                      Free key from{' '}
+                      <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--primary)', textDecoration: 'underline' }}>
+                        Google AI Studio
+                      </a>
+                    </p>
+                  </div>
+                  <div className="form-group">
+                    <label>Gemini Model</label>
+                    <select
+                      value={activeModelName}
+                      onChange={(e) => {
+                        setActiveModelName(e.target.value);
+                        localStorage.setItem('ai_pdf_gemini_model', e.target.value);
+                      }}
+                    >
+                      <option value="gemini-3.6-flash">Gemini 3.6 Flash (Primary, Recommended)</option>
+                      <option value="gemini-3.6-flash-lite">Gemini 3.6 Flash-Lite (Fast)</option>
+                      <option value="gemini-3.8-flash">Gemini 3.8 Flash (Latest Preview)</option>
+                      <option value="gemini-3.5-flash">Gemini 3.5 Flash</option>
+                      <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite</option>
+                      <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+                    </select>
+                  </div>
+                </>
               ) : (
                 <>
                   <div className="form-group">

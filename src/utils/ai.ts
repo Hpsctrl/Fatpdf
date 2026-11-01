@@ -321,7 +321,8 @@ async function processWithGemini(
   chatHistory: ChatMessage[],
   prompt: string,
   pdfData: PdfData,
-  apiKey: string
+  apiKey: string,
+  modelPreference?: string
 ): Promise<AiResult> {
   const ai = new GoogleGenAI({ apiKey });
   const pdfContext = buildPdfContext(pdfData);
@@ -341,15 +342,16 @@ async function processWithGemini(
   });
 
   const candidateModels = [
+    modelPreference || 'gemini-3.6-flash',
     'gemini-3.6-flash',
     'gemini-3.6-flash-lite',
+    'gemini-3.8-flash',
     'gemini-3.5-flash',
     'gemini-3.5-flash-lite',
     'gemini-2.5-flash',
-    'gemini-2.5-flash-lite',
     'gemini-2.0-flash',
     'gemini-1.5-flash',
-  ];
+  ].filter((m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx);
 
   let rawText = '';
   let lastErr: any = null;
@@ -471,7 +473,8 @@ export async function processAIRequest(
   provider: AiProvider,
   geminiKey: string,
   groqKey: string,
-  groqModel: string
+  groqModel: string,
+  geminiModel?: string
 ): Promise<AiResult> {
   // 1. Check local instant intent processor first (0ms latency, high reliability)
   const quickResult = detectQuickIntent(prompt, pdfData);
@@ -485,7 +488,7 @@ export async function processAIRequest(
     return await processWithGroq(chatHistory, prompt, pdfData, groqKey, groqModel);
   } else {
     if (!geminiKey) throw new Error('Please enter your Gemini API key in Settings.');
-    return await processWithGemini(chatHistory, prompt, pdfData, geminiKey);
+    return await processWithGemini(chatHistory, prompt, pdfData, geminiKey, geminiModel);
   }
 }
 
@@ -499,7 +502,8 @@ export async function runOnlineOcr(
   pageHeight: number,
   provider: AiProvider,
   geminiKey?: string,
-  groqKey?: string
+  groqKey?: string,
+  preferredModel?: string
 ): Promise<OcrResult> {
   const ocrPrompt = `You are a high-precision OCR and document analysis engine.
 Extract all readable text from this scanned/screenshot document image.
@@ -521,13 +525,16 @@ JSON schema:
     if (!geminiKey) throw new Error('Please enter your Google Gemini API Key in Settings to run Online OCR.');
     const ai = new GoogleGenAI({ apiKey: geminiKey });
     const candidateModels = [
+      preferredModel || 'gemini-3.6-flash',
+      'gemini-3.6-flash',
+      'gemini-3.6-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-3.5-flash-lite',
       'gemini-2.5-flash',
       'gemini-2.0-flash',
       'gemini-1.5-flash',
-      'gemini-3.6-flash',
-      'gemini-3.6-flash-lite',
-      'gemini-2.5-flash-lite',
-    ];
+    ].filter((m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx);
 
     let lastErr: any = null;
     for (const model of candidateModels) {
