@@ -1043,11 +1043,25 @@ const App: React.FC = () => {
               onDrop={onDrop}
               onClick={() => fileInputRef.current?.click()}
             >
-              <UploadCloud size={46} className="upload-icon" />
-              <h2 style={{ fontSize: '1.25rem', color: '#1e1b4b' }}>Upload PDF or Document Image</h2>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                Drag & drop or click to browse .pdf, .png, .jpg, or screenshot
+              <div className="upload-icon-circle">
+                <UploadCloud size={32} color="var(--primary)" />
+              </div>
+              <h2 className="upload-title">
+                Upload PDF or Document Image
+              </h2>
+              <p className="upload-subtitle">
+                Drag & drop or tap to browse PDF, PNG, JPG, or Screenshots
               </p>
+              <div className="upload-btn-hint">
+                <FilePlus2 size={15} /> Select Document
+              </div>
+              <div className="upload-formats-row">
+                <span className="upload-format-tag">PDF</span>
+                <span className="upload-format-tag">PNG</span>
+                <span className="upload-format-tag">JPG</span>
+                <span className="upload-format-tag">Screenshots</span>
+                <span className="upload-format-tag">Scans</span>
+              </div>
               <input
                 type="file"
                 accept=".pdf,image/png,image/jpeg,image/webp,image/*"
