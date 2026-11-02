@@ -22,17 +22,26 @@ export const AppleHelloIntro: React.FC<AppleHelloIntroProps> = ({ onFinish, lang
 
     if (!path || !svg || !container) return;
 
-    // Calculate exact SVG path length
-    const totalLength = path.getTotalLength ? path.getTotalLength() : 5000;
+    // Robust calculation of SVG cursive path length with fallback
+    let totalLength = 5600;
+    try {
+      if (path.getTotalLength) {
+        const measured = path.getTotalLength();
+        if (measured > 500) totalLength = measured;
+      }
+    } catch {
+      totalLength = 5600;
+    }
 
-    // Initial state setup
+    // Set initial stroke-dash offset for cursive handwriting line animation
     gsap.set([path, pathGlow], {
-      strokeDasharray: totalLength,
-      strokeDashoffset: totalLength,
+      strokeDasharray: totalLength + 20,
+      strokeDashoffset: totalLength + 20,
+      visibility: 'visible',
     });
 
     gsap.set(svg, {
-      scale: 0.75,
+      scale: 0.78,
       transformOrigin: '50% 50%',
       opacity: 0,
     });
@@ -40,7 +49,7 @@ export const AppleHelloIntro: React.FC<AppleHelloIntroProps> = ({ onFinish, lang
     if (badge) {
       gsap.set(badge, {
         opacity: 0,
-        y: 14,
+        y: 18,
       });
     }
 
@@ -50,53 +59,56 @@ export const AppleHelloIntro: React.FC<AppleHelloIntroProps> = ({ onFinish, lang
       },
     });
 
-    // Animate path drawing and 3D scale together, matching Apple screensaver
+    // 1. Reveal SVG container and start line handwriting stroke
     tl.to(svg, {
       opacity: 1,
-      duration: 0.35,
+      duration: 0.4,
       ease: 'power2.out',
     })
+      // 2. Continuous 3D cursive line animation (GreenSock drawing)
       .to(
         [path, pathGlow],
         {
           strokeDashoffset: 0,
-          duration: 1.8,
-          ease: 'power2.inOut',
+          duration: 2.3,
+          ease: 'power1.inOut',
         },
         0.1
       )
+      // 3. Perspective scale towards viewer as it writes
       .to(
         svg,
         {
           scale: 1,
-          duration: 1.8,
+          duration: 2.3,
           ease: 'power2.out',
         },
         0.1
       );
 
+    // 4. Reveal badge & Continue button
     if (badge) {
       tl.to(
         badge,
         {
           opacity: 1,
           y: 0,
-          duration: 0.45,
-          ease: 'back.out(1.4)',
+          duration: 0.5,
+          ease: 'back.out(1.5)',
         },
-        '-=0.5'
+        '-=0.4'
       );
     }
 
-    // Hold briefly, then smooth cinematic fade out into app
+    // 5. Elegant hold so the user can enjoy the completed line drawing, then smooth dissolve
     tl.to(
       container,
       {
         opacity: 0,
-        scale: 1.05,
-        duration: 0.45,
+        scale: 1.04,
+        duration: 0.5,
         ease: 'power2.inOut',
-        delay: 0.4,
+        delay: 1.0,
       }
     );
 
@@ -112,10 +124,10 @@ export const AppleHelloIntro: React.FC<AppleHelloIntroProps> = ({ onFinish, lang
       onClick={onFinish}
       role="button"
       tabIndex={0}
-      title="Click or tap to skip"
+      title="Click anywhere to continue"
     >
       <div className="apple-hello-stage">
-        {/* Ambient atmospheric backdrop glow */}
+        {/* Apple Atmospheric Backdrop Aura Glow */}
         <div className="apple-ambient-glow" />
 
         {/* Apple 3D Hello Vector Graphic */}
@@ -144,7 +156,7 @@ export const AppleHelloIntro: React.FC<AppleHelloIntroProps> = ({ onFinish, lang
               </linearGradient>
 
               <filter id="appleNeonGlow" x="-30%" y="-30%" width="160%" height="160%">
-                <feGaussianBlur stdDeviation="16" result="blur" />
+                <feGaussianBlur stdDeviation="18" result="blur" />
                 <feMerge>
                   <feMergeNode in="blur" />
                   <feMergeNode in="SourceGraphic" />
@@ -159,7 +171,7 @@ export const AppleHelloIntro: React.FC<AppleHelloIntroProps> = ({ onFinish, lang
               transform="translate(311.08 476.02)"
               fill="none"
               stroke="url(#appleGlowGrad)"
-              strokeWidth="42"
+              strokeWidth="44"
               strokeLinecap="round"
               strokeLinejoin="round"
               opacity="0.45"
@@ -180,11 +192,29 @@ export const AppleHelloIntro: React.FC<AppleHelloIntroProps> = ({ onFinish, lang
           </svg>
         </div>
 
-        {/* Elegant Subtitle / Badge */}
+        {/* Elegant Branding & Continue Action */}
         <div ref={badgeRef} className="apple-lang-badge">
-          <span className="apple-dot" />
-          <span>{langInfo ? `${langInfo.lang} • ${langInfo.sub}` : 'FatPDF • AI Document Studio'}</span>
-          <span className="apple-skip-hint">tap anywhere to skip</span>
+          <img
+            src="/logo.png"
+            alt="FatPDF"
+            className="apple-intro-logo"
+            style={{ width: 22, height: 22, borderRadius: 6, objectFit: 'cover' }}
+          />
+          <span style={{ fontWeight: 700, color: '#ffffff' }}>FatPDF</span>
+          <span style={{ opacity: 0.5 }}>•</span>
+          <span style={{ color: '#cbd5e1' }}>
+            {langInfo ? `${langInfo.lang} (${langInfo.sub})` : 'AI Document Studio'}
+          </span>
+          <button
+            type="button"
+            className="apple-continue-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onFinish();
+            }}
+          >
+            Continue &rarr;
+          </button>
         </div>
       </div>
     </div>
