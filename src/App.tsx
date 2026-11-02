@@ -365,9 +365,14 @@ const App: React.FC = () => {
         setChatHistory([
           {
             role: 'system',
-            text: `Loaded "${data.fileName}" — ${data.totalPages} pages.${hasScanned ? ' 📸 Note: Scanned/image page detected. Use "Online OCR" to recognize and edit text.' : ''}`
+            text: `Loaded "${data.fileName}" — ${data.totalPages} pages.${hasScanned ? ' 📸 Note: Scanned/image page detected. Indexing Page 1 with Online OCR automatically...' : ''}`
           }
         ]);
+        if (hasScanned) {
+          setTimeout(() => {
+            handleRunOcr(1, data);
+          }, 150);
+        }
       }
     } catch (err: any) {
       alert('Failed to parse file: ' + (err.message || String(err)));
@@ -536,13 +541,14 @@ const App: React.FC = () => {
   };
 
   /* ─── AI Chat & Unified Action Dispatcher ─── */
-  const applyAction = async (action: string, params: Record<string, any>) => {
+  const applyAction = async (action: string, params: Record<string, any>, customDoc?: PdfData) => {
     if (action === 'set_theme') {
       const targetTheme = (params.theme || 'dark') as AppTheme;
       handleThemeChange(targetTheme);
       return;
     }
-    if (!pdfData) return;
+    const docToUse = customDoc || pdfData;
+    if (!docToUse) return;
     try {
       setLoading(true);
       let newBytes: Uint8Array;
@@ -552,16 +558,16 @@ const App: React.FC = () => {
           handleThemeChange((params.theme || 'dark') as AppTheme);
           return;
         case 'run_ocr':
-          await handleRunOcr(params.page || currentPage);
+          await handleRunOcr(params.page || currentPage, docToUse);
           return;
         case 'change_font': {
           const ocrMap = new Map<number, PdfTextItem[]>();
-          pdfData.pages.forEach(p => {
+          docToUse.pages.forEach(p => {
             if (p.items && p.items.length > 0) ocrMap.set(p.pageNumber, p.items);
           });
           const target = params.targetText || params.text || params.find || '';
           newBytes = await changeTextFont(
-            pdfData.rawBytes,
+            docToUse.rawBytes,
             target,
             {
               family: params.fontFamily || params.family,
@@ -575,42 +581,102 @@ const App: React.FC = () => {
           );
           break;
         }
+        case 'batch_replace':
         case 'search_replace': {
           const ocrMap = new Map<number, PdfTextItem[]>();
-          pdfData.pages.forEach(p => {
+          docToUse.pages.forEach(p => {
             if (p.items && p.items.length > 0) ocrMap.set(p.pageNumber, p.items);
           });
-          const targetP = params.targetPage || (params.allPages ? undefined : currentPage);
-          const replaceRes = await searchAndReplaceTextResult(
-            pdfData.rawBytes,
-            params.find || '',
-            params.replace || '',
-            targetP,
-            ocrMap,
-            {
-              family: params.fontFamily || params.family,
-              size: params.fontSize || params.size,
-              bold: params.bold,
-              italic: params.italic,
-              color: params.color
+
+          const replacements: Array<{
+            find: string;
+            replace: string;
+            targetPage?: number;
+            fontFamily?: string;
+            fontSize?: number;
+            bold?: boolean;
+            italic?: boolean;
+            color?: string;
+          }> = params.replacements && Array.isArray(params.replacements) && params.replacements.length > 0
+            ? params.replacements
+            : [{
+                find: params.find || '',
+                replace: params.replace || '',
+                targetPage: params.targetPage || (params.allPages ? undefined : currentPage),
+                fontFamily: params.fontFamily || params.family,
+                fontSize: params.fontSize || params.size,
+                bold: params.bold,
+                italic: params.italic,
+                color: params.color
+              }];
+
+          let currentBytes = docToUse.rawBytes;
+          let anyReplaced = 0;
+
+          for (const rep of replacements) {
+            if (!rep.find && !rep.replace) continue;
+            const targetP = rep.targetPage || (params.allPages ? undefined : currentPage);
+
+            // Auto OCR safety net: if target page is scanned and not yet indexed, run OCR on the fly!
+            if (targetP && docToUse.pages[targetP - 1]?.isScanned && (!ocrMap.has(targetP) || ocrMap.get(targetP)!.length === 0)) {
+              try {
+                const { base64 } = await extractPageAsBase64Image(currentBytes, targetP, 2.0);
+                const pageInfo = docToUse.pages[targetP - 1];
+                const ocrResult = await runOnlineOcr(
+                  base64,
+                  pageInfo.width,
+                  pageInfo.height,
+                  provider,
+                  geminiKey,
+                  groqKey,
+                  activeModelName
+                );
+                ocrMap.set(targetP, ocrResult.items);
+                docToUse.pages[targetP - 1].items = ocrResult.items;
+                docToUse.pages[targetP - 1].ocrApplied = true;
+                docToUse.pages[targetP - 1].text = ocrResult.fullText;
+              } catch (e) {
+                console.warn('Auto OCR on-the-fly warning:', e);
+              }
             }
-          );
-          if (replaceRes.count === 0) {
+
+            const replaceRes = await searchAndReplaceTextResult(
+              currentBytes,
+              rep.find,
+              rep.replace,
+              targetP,
+              ocrMap,
+              {
+                family: rep.fontFamily || params.fontFamily || params.family,
+                size: rep.fontSize || params.fontSize || params.size,
+                bold: rep.bold !== undefined ? rep.bold : params.bold,
+                italic: rep.italic !== undefined ? rep.italic : params.italic,
+                color: rep.color || params.color
+              }
+            );
+
+            if (replaceRes.count > 0) {
+              currentBytes = replaceRes.pdfBytes;
+              anyReplaced += replaceRes.count;
+            }
+          }
+
+          if (anyReplaced === 0) {
             setChatHistory(prev => [
               ...prev.slice(0, -1),
               {
                 role: 'ai',
-                text: `⚠️ Could not find **"${params.find}"** on Page ${targetP || 'document'}. If this text is inside a scanned image, please click **Online OCR** first so I can recognize and edit it.`
+                text: `⚠️ Could not find matches for requested replacements on Page ${params.targetPage || currentPage}.`
               }
             ]);
             return;
           }
-          newBytes = replaceRes.pdfBytes;
+          newBytes = currentBytes;
           break;
         }
         case 'add_watermark':
           newBytes = await addWatermark(
-            pdfData.rawBytes,
+            docToUse.rawBytes,
             params.text || 'CONFIDENTIAL',
             params.targetPages,
             params.opacity || 0.22,
@@ -619,7 +685,7 @@ const App: React.FC = () => {
           break;
         case 'add_header_footer':
           newBytes = await addHeaderFooter(
-            pdfData.rawBytes,
+            docToUse.rawBytes,
             params.text || '',
             params.position || 'header',
             params.fontSize || 10
@@ -627,28 +693,28 @@ const App: React.FC = () => {
           break;
         case 'add_page_numbers':
           newBytes = await addPageNumbers(
-            pdfData.rawBytes,
+            docToUse.rawBytes,
             params.position || 'bottom-center',
             params.prefix || 'Page '
           );
           break;
         case 'remove_pages':
-          newBytes = await removePages(pdfData.rawBytes, params.pages || [currentPage]);
+          newBytes = await removePages(docToUse.rawBytes, params.pages || [currentPage]);
           break;
         case 'extract_pages':
-          newBytes = await extractPages(pdfData.rawBytes, params.pages || [currentPage]);
+          newBytes = await extractPages(docToUse.rawBytes, params.pages || [currentPage]);
           break;
         case 'duplicate_page':
-          newBytes = await duplicatePage(pdfData.rawBytes, params.page || currentPage);
+          newBytes = await duplicatePage(docToUse.rawBytes, params.page || currentPage);
           break;
         case 'add_blank_page':
-          newBytes = await addBlankPage(pdfData.rawBytes, params.atIndex);
+          newBytes = await addBlankPage(docToUse.rawBytes, params.atIndex);
           break;
         case 'reorder_pages':
-          newBytes = await reorderPages(pdfData.rawBytes, params.order);
+          newBytes = await reorderPages(docToUse.rawBytes, params.order);
           break;
         case 'rotate_pages':
-          newBytes = await rotatePages(pdfData.rawBytes, params.pages || [currentPage], params.degrees || 90);
+          newBytes = await rotatePages(docToUse.rawBytes, params.pages || [currentPage], params.degrees || 90);
           break;
         case 'merge':
           setMergeWaiting(true);
@@ -728,7 +794,7 @@ const App: React.FC = () => {
       setChatHistory(prev => [...prev, { role: 'ai', text: result.message }]);
 
       if (result.action && result.action !== 'none') {
-        await applyAction(result.action, result.params);
+        await applyAction(result.action, result.params, currentDoc);
       }
     } catch (err: any) {
       let errorMsg = err.message || String(err);

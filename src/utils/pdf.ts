@@ -240,6 +240,12 @@ export async function searchAndReplaceTextResult(
     for (const item of candidateItems) {
       const str = item.str || '';
       if (!str.trim()) continue;
+
+      // When replacing a student name, strictly skip subject/course headers
+      if (isNameLabel && /subject\s*name|course\s*name|college|institute|university/i.test(str)) {
+        continue;
+      }
+
       const normStr = normalize(str);
       const cleanStr = stripPunct(str);
 
@@ -256,7 +262,17 @@ export async function searchAndReplaceTextResult(
           updatedStr = replaceText;
         }
       }
-      // 1.2 Punctuation-insensitive match (e.g. "roll.no." matching "roll no: 263712" or "ROLL NO")
+      // 1.2 Student Name specific match: e.g. "NAME: ALOK KUMAR MISHRA"
+      else if (isNameLabel && /(?:NAME|STUDENT\s*NAME)\s*:\s*([A-Za-z\s.'-]+)/i.test(str)) {
+        matched = true;
+        const m = str.match(/((?:NAME|STUDENT\s*NAME)\s*:\s*)([A-Za-z\s.'-]+)/i);
+        if (m) {
+          updatedStr = str.replace(m[0], `${m[1]}${replaceText}`);
+        } else {
+          updatedStr = `NAME: ${replaceText}`;
+        }
+      }
+      // 1.3 Punctuation-insensitive match (e.g. "roll.no." matching "roll no: 263712" or "ROLL NO")
       else if (cleanFind.length >= 3 && cleanStr.includes(cleanFind)) {
         matched = true;
         // If string has a label: value pattern and user gave a value
@@ -327,6 +343,9 @@ export async function searchAndReplaceTextResult(
       for (const [, lineItems] of lineMap.entries()) {
         lineItems.sort((a, b) => a.x - b.x);
         const lineText = lineItems.map(it => it.str).join(' ');
+        if (isNameLabel && /subject\s*name|course\s*name|college|institute/i.test(lineText)) {
+          continue;
+        }
         const cleanLine = stripPunct(lineText);
 
         if (cleanLine.includes(cleanFind) || (isRollLabel && /(?:roll|erp|reg)[.\s_-]*(?:no|number)?[.\s_-]*:?\s*([0-9A-Za-z]+)/i.test(lineText))) {

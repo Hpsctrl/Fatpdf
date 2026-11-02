@@ -58,6 +58,55 @@ function buildPdfContext(pdfData: PdfData): string {
 }
 
 /**
+ * Intelligent helper to extract student name from page text.
+ * Strictly ignores "SUBJECT NAME:" and "COURSE NAME:" and university/college names.
+ */
+export function extractStudentName(text: string): string | null {
+  if (!text) return null;
+  // 1. Look specifically in SUBMITTED BY section
+  const submittedByBlock = text.match(/SUBMITTED\s+BY:?[\s\S]*?(?:SUBMITTED\s+TO|$)/i);
+  if (submittedByBlock) {
+    const n = submittedByBlock[0].match(/(?:NAME|STUDENT\s*NAME)\s*:\s*([A-Za-z\s.'-]+?)(?:\s{2,}|\b(?:ROLL|ERP|REG|COURSE|BRANCH)\b|\r?\n|$)/i);
+    if (n && n[1].trim() && !/SUBJECT|COURSE|LAB|COLLEGE|INSTITUTE/i.test(n[1])) {
+      return n[1].trim();
+    }
+  }
+
+  // 2. Iterate line by line, skipping lines with SUBJECT NAME, COURSE NAME, or INSTITUTION
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (/SUBJECT\s+NAME|COURSE\s+NAME|COLLEGE|INSTITUTE|UNIVERSITY|SEMESTER/i.test(line)) continue;
+    const m = line.match(/(?:STUDENT\s+NAME|\bNAME)\s*:\s*([A-Za-z\s.'-]+?)(?:\s{2,}|\b(?:MRS?|MS|DR|PROF|ROLL|ERP|REG)\b|\r?\n|$)/i);
+    if (m && m[1].trim() && !/SUBJECT|COURSE|LAB|COLLEGE|INSTITUTE/i.test(m[1])) {
+      return m[1].trim();
+    }
+  }
+  return null;
+}
+
+/**
+ * Intelligent helper to extract student Roll No or ERP from page text.
+ */
+export function extractRollNo(text: string): string | null {
+  if (!text) return null;
+  const m = text.match(/(?:ROLL|ERP|REG)[.\s_-]*(?:NO\.?|NUMBER)?[.\s_-]*:?\s*([0-9A-Za-z]+)/i);
+  if (m) return m[1].trim();
+  const digits = text.match(/\b\d{5,8}\b/);
+  return digits ? digits[0] : null;
+}
+
+/**
+ * Intelligent helper to extract teacher name (e.g. SUBMITTED TO: MRS. VAISHALI).
+ */
+export function extractTeacherName(text: string): string | null {
+  if (!text) return null;
+  const teacherMatch = text.match(/(?:SUBMITTED\s+TO:\s*)([A-Za-z\s.]+?)(?:\s{2,}|\bASSISTANT|\bPROFESSOR|\r?\n|$)/i);
+  if (teacherMatch) return teacherMatch[1].trim();
+  const m = text.match(/\b(?:MRS?|MS|DR|PROF)\.?\s+[A-Za-z\s.]+/i);
+  return m ? m[0].trim() : null;
+}
+
+/**
  * High-Speed Local Intent Pre-Processor (0ms latency, zero denial)
  * Directly handles high-frequency commands, abbreviations, single words, and common typos.
  */
@@ -95,34 +144,82 @@ export function detectQuickIntent(prompt: string, pdfData: PdfData): AiResult | 
     }
   }
 
+  // 1.5. Compound Student Name AND Roll Number Edit
+  // e.g. "In first page change name to shayam Sunder Yadav and roll number to 272827"
+  const hasNameKw = /\b(?:student\s+|my\s+)?name\b/i.test(clean);
+  const hasRollKw = /\b(?:roll|erp|reg)[.\s_-]*(?:no|number)?\b/i.test(clean);
+
+  if (hasNameKw && hasRollKw && /(?:and|,|&)\s+/i.test(clean)) {
+    let targetPage = 1;
+    const pMatch = clean.match(/(?:in|on)?\s*(?:page\s*(\d+)|pg\s*(\d+)|p(\d+)|first\s*page|1st\s*page)/i);
+    if (pMatch) {
+      if (pMatch[1]) targetPage = parseInt(pMatch[1], 10);
+      else if (pMatch[2]) targetPage = parseInt(pMatch[2], 10);
+      else if (pMatch[3]) targetPage = parseInt(pMatch[3], 10);
+    }
+
+    let newName = '';
+    let newRoll = '';
+
+    // Pattern A: name ... and roll ...
+    const nameThenRoll = clean.match(/(?:student\s+|my\s+)?name\s*(?:to|with|:|=|\s)+\s*([A-Za-z\s.'-]+?)(?:\s+(?:and|,|&)\s+(?:student\s+)?(?:roll|erp|reg)[.\s_-]*(?:no|number)?\s*(?:to|with|:|=|\s)+\s*([A-Za-z0-9-]+))/i);
+    if (nameThenRoll) {
+      newName = nameThenRoll[1].trim();
+      newRoll = nameThenRoll[2].trim();
+    } else {
+      // Pattern B: roll ... and name ...
+      const rollThenName = clean.match(/(?:student\s+)?(?:roll[.\s_-]*(?:no[.\s_-]*|number)?|erp[.\s_-]*(?:no[.\s_-]*|number)?)\s*(?:to|with|:|=|\s)+\s*([A-Za-z0-9-]+?)(?:\s+(?:and|,|&)\s+(?:student\s+|my\s+)?name\s*(?:to|with|:|=|\s)+\s*([A-Za-z\s.'-]+))/i);
+      if (rollThenName) {
+        newRoll = rollThenName[1].trim();
+        newName = rollThenName[2].trim();
+      }
+    }
+
+    if (newName && newRoll) {
+      const pText = pdfData.pages[targetPage - 1]?.text || pdfData.pages[0]?.text || '';
+      const oldStudentName = extractStudentName(pText) || 'name';
+      const oldRollNo = extractRollNo(pText) || 'roll.no.';
+
+      return {
+        message: `Updated student name to **${newName}** and roll number to **${newRoll}** on Page ${targetPage}!`,
+        action: 'batch_replace',
+        params: {
+          replacements: [
+            { find: oldStudentName, replace: newName, targetPage },
+            { find: oldRollNo, replace: newRoll, targetPage }
+          ],
+          targetPage
+        }
+      };
+    }
+  }
+
   // 2. Change student name shortcut
-  const nameMatch = clean.match(/^(?:change|update|set|replace)?\s*(?:student\s+|my\s+)?name\s*(?:to|with|:|=|\s)+\s*([A-Za-z\s.'-]+)$/i);
-  if (nameMatch && nameMatch[1]) {
-    const newName = nameMatch[1].trim();
-    const p1Text = pdfData.pages[0]?.text || '';
-    const oldNameMatch = p1Text.match(/NAME:\s*([A-Za-z\s.'-]+?)(?:\s+(?:ROLL|ERP|REG|COURSE|BRANCH|SUBMITTED)|\r?\n|$)/i)
-      || p1Text.match(/NAME:\s*([^\r\n]+)/i);
-    const oldName = oldNameMatch ? oldNameMatch[1].trim() : 'HARENDRA';
+  const nameMatch = clean.match(/^(?:in\s+pg\s*(\d+),?\s*)?(?:change|update|set|replace)?\s*(?:student\s+|my\s+)?name\s*(?:to|with|:|=|\s)+\s*([A-Za-z\s.'-]+)$/i);
+  if (nameMatch && (nameMatch[2] || nameMatch[1])) {
+    const targetPage = nameMatch[1] && !isNaN(parseInt(nameMatch[1], 10)) ? parseInt(nameMatch[1], 10) : 1;
+    const newName = (nameMatch[2] || nameMatch[1]).trim();
+    const pText = pdfData.pages[targetPage - 1]?.text || pdfData.pages[0]?.text || '';
+    const oldName = extractStudentName(pText) || 'name';
     return {
-      message: `Updated student name to **${newName}**!`,
+      message: `Updated student name to **${newName}** on Page ${targetPage}!`,
       action: 'search_replace',
-      params: { find: oldName, replace: newName, targetPage: 1 }
+      params: { find: oldName, replace: newName, targetPage }
     };
   }
 
   // 3. Change roll number / ERP shortcut (handles "roll.no.", "roll no", "erp", "roll", etc.)
-  const rollMatch = clean.match(/^(?:change|update|set|replace)?\s*(?:student\s+)?(?:roll[.\s_-]*(?:no[.\s_-]*|number)?|erp[.\s_-]*(?:no[.\s_-]*|number)?)\s*(?:to|with|:|=|\s)+\s*([A-Za-z0-9-]+)$/i)
-    || clean.match(/^(?:roll[.\s_-]*(?:no[.\s_-]*|number)?|erp[.\s_-]*(?:no[.\s_-]*|number)?)\s*(?:to|with|:|=|\s)+\s*([A-Za-z0-9-]+)$/i);
-  if (rollMatch && rollMatch[1]) {
-    const newRoll = rollMatch[1].trim();
-    const p1Text = pdfData.pages[0]?.text || '';
-    const oldRollMatch = p1Text.match(/(?:ROLL|ERP|REG)[.\s_-]*(?:NO\.?|NUMBER)?[.\s_-]*:?\s*([0-9A-Za-z]+)/i)
-      || p1Text.match(/\b\d{5,8}\b/);
-    const oldRoll = oldRollMatch ? (oldRollMatch[1] || oldRollMatch[0]).trim() : 'roll.no.';
+  const rollMatch = clean.match(/^(?:in\s+pg\s*(\d+),?\s*)?(?:change|update|set|replace)?\s*(?:student\s+)?(?:roll[.\s_-]*(?:no[.\s_-]*|number)?|erp[.\s_-]*(?:no[.\s_-]*|number)?)\s*(?:to|with|:|=|\s)+\s*([A-Za-z0-9-]+)$/i)
+    || clean.match(/^(?:in\s+pg\s*(\d+),?\s*)?(?:roll[.\s_-]*(?:no[.\s_-]*|number)?|erp[.\s_-]*(?:no[.\s_-]*|number)?)\s*(?:to|with|:|=|\s)+\s*([A-Za-z0-9-]+)$/i);
+  if (rollMatch && (rollMatch[2] || rollMatch[1])) {
+    const targetPage = rollMatch[1] && !isNaN(parseInt(rollMatch[1], 10)) ? parseInt(rollMatch[1], 10) : 1;
+    const newRoll = (rollMatch[2] || rollMatch[1]).trim();
+    const pText = pdfData.pages[targetPage - 1]?.text || pdfData.pages[0]?.text || '';
+    const oldRoll = extractRollNo(pText) || 'roll.no.';
     return {
-      message: `Updated roll number to **${newRoll}**!`,
+      message: `Updated roll number to **${newRoll}** on Page ${targetPage}!`,
       action: 'search_replace',
-      params: { find: oldRoll, replace: newRoll, targetPage: 1 }
+      params: { find: oldRoll, replace: newRoll, targetPage }
     };
   }
 
@@ -211,40 +308,32 @@ export function detectQuickIntent(prompt: string, pdfData: PdfData): AiResult | 
   }
 
   // 8. General change / replace regex (handles typos like "chaneg", "replcae", "in pg 1, chaneg X to Y")
-  const changeRegex = /(?:in\s+pg\s*(\d+),?\s*)?(?:change|chaneg|replace|replcae|update)\s+([A-Za-z0-9\s:._'-]+?)\s+(?:to|with)\s+([A-Za-z0-9\s:._'-]+)$/i;
-  const changeMatch = clean.match(changeRegex);
-  if (changeMatch) {
-    const targetPage = changeMatch[1] ? parseInt(changeMatch[1], 10) : 1;
-    let findVal = changeMatch[2].trim();
-    let replaceVal = changeMatch[3].trim();
+  if (!hasNameKw || !hasRollKw) {
+    const changeRegex = /(?:in\s+pg\s*(\d+),?\s*)?(?:change|chaneg|replace|replcae|update)\s+([A-Za-z0-9\s:._'-]+?)\s+(?:to|with)\s+([A-Za-z0-9\s:._'-]+)$/i;
+    const changeMatch = clean.match(changeRegex);
+    if (changeMatch) {
+      const targetPage = changeMatch[1] ? parseInt(changeMatch[1], 10) : 1;
+      let findVal = changeMatch[2].trim();
+      let replaceVal = changeMatch[3].trim();
 
-    // Clean common prefixes and attributes from findVal
-    const pText = pdfData.pages[targetPage - 1]?.text || pdfData.pages[0]?.text || '';
-    const cleanAttr = findVal.toLowerCase().replace(/[^a-z0-9]/g, '');
+      // Clean common prefixes and attributes from findVal
+      const pText = pdfData.pages[targetPage - 1]?.text || pdfData.pages[0]?.text || '';
+      const cleanAttr = findVal.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-    if (findVal.toLowerCase().includes('submitted to')) {
-      const teacherMatch = pText.match(/(?:SUBMITTED\s+TO:\s*)([A-Za-z\s.]+)/i);
-      if (teacherMatch) {
-        findVal = teacherMatch[1].trim(); // e.g. "MRS. VAISHALI" or "MS. AMRITA"
+      if (findVal.toLowerCase().includes('submitted to') || cleanAttr === 'teacher') {
+        findVal = extractTeacherName(pText) || findVal;
+      } else if (cleanAttr === 'roll' || cleanAttr === 'rollno' || cleanAttr === 'erp' || cleanAttr === 'erpno') {
+        findVal = extractRollNo(pText) || 'roll.no.';
+      } else if (cleanAttr === 'name' || cleanAttr === 'studentname') {
+        findVal = extractStudentName(pText) || 'name';
       }
-    } else if (cleanAttr === 'roll' || cleanAttr === 'rollno' || cleanAttr === 'erp' || cleanAttr === 'erpno') {
-      const rollMatch = pText.match(/(?:ROLL|ERP|REG)[.\s_-]*(?:NO\.?|NUMBER)?[.\s_-]*:?\s*([0-9A-Za-z]+)/i)
-        || pText.match(/\b\d{5,8}\b/);
-      if (rollMatch) {
-        findVal = (rollMatch[1] || rollMatch[0]).trim();
-      }
-    } else if (cleanAttr === 'name' || cleanAttr === 'studentname') {
-      const nameMatch = pText.match(/NAME:\s*([A-Za-z\s.'-]+?)(?:\s+(?:ROLL|ERP|REG|COURSE|BRANCH|SUBMITTED)|\r?\n|$)/i);
-      if (nameMatch) {
-        findVal = nameMatch[1].trim();
-      }
+
+      return {
+        message: `Replaced **"${findVal}"** with **"${replaceVal}"** on Page ${targetPage}!`,
+        action: 'search_replace',
+        params: { find: findVal, replace: replaceVal, targetPage }
+      };
     }
-
-    return {
-      message: `Replaced **"${findVal}"** with **"${replaceVal}"** on Page ${targetPage}!`,
-      action: 'search_replace',
-      params: { find: findVal, replace: replaceVal, targetPage }
-    };
   }
 
   // 9. Theme switcher shortcuts ("dark mode", "pearl mode", "earl mode", "adaptive mode", "light mode")
@@ -276,35 +365,39 @@ AVAILABLE ACTIONS YOU CAN TRIGGER:
 1. **none** - Answer user questions, provide summaries, study notes, explanations, or quizzes.
 2. **search_replace** - Search for specific text and replace it with new text across the PDF or target page, optionally applying font styling.
    Params: { "find": "old text", "replace": "new text", "targetPage": 1 (optional), "fontFamily": "helvetica"|"times"|"courier", "fontSize": 14, "bold": true, "italic": false, "color": "blue"|"#000000" }
-3. **add_watermark** - Add text watermark across the document or target pages.
+3. **batch_replace** - Execute multiple text replacements in a single request (e.g. student name AND roll number).
+   Params: { "replacements": [{ "find": "old text 1", "replace": "new text 1", "targetPage": 1 }, { "find": "old text 2", "replace": "new text 2", "targetPage": 1 }] }
+4. **add_watermark** - Add text watermark across the document or target pages.
    Params: { "text": "CONFIDENTIAL", "targetPages": [1] (optional), "opacity": 0.22, "angle": -45 }
-4. **add_header_footer** - Add banner or header/footer text across all pages.
+5. **add_header_footer** - Add banner or header/footer text across all pages.
    Params: { "text": "Header Text", "position": "header"|"footer"|"both" }
-5. **add_page_numbers** - Number all pages automatically.
+6. **add_page_numbers** - Number all pages automatically.
    Params: { "position": "bottom-center"|"bottom-right"|"top-right", "prefix": "Page " }
-6. **remove_pages** - Delete specific pages.
+7. **remove_pages** - Delete specific pages.
    Params: { "pages": [1, 3] }
-7. **extract_pages** - Extract pages into a separate document.
+8. **extract_pages** - Extract pages into a separate document.
    Params: { "pages": [2, 4] }
-8. **duplicate_page** - Duplicate a page.
+9. **duplicate_page** - Duplicate a page.
    Params: { "page": 1 }
-9. **add_blank_page** - Insert a blank white page.
-   Params: { "atIndex": 1 }
-10. **reorder_pages** - Reorder pages.
+10. **add_blank_page** - Insert a blank white page.
+    Params: { "atIndex": 1 }
+11. **reorder_pages** - Reorder pages.
     Params: { "order": [2, 1, 3] }
-11. **rotate_pages** - Rotate specific pages by degrees (90, 180, 270).
+12. **rotate_pages** - Rotate specific pages by degrees (90, 180, 270).
     Params: { "pages": [1], "degrees": 90 }
-12. **merge** - Signal the interface to allow merging another PDF.
+13. **merge** - Signal the interface to allow merging another PDF.
     Params: {}
-13. **run_ocr** - Run Online OCR using AI vision on a scanned page or document image to extract text and enable editing.
+14. **run_ocr** - Run Online OCR using AI vision on a scanned page or document image to extract text and enable editing.
     Params: { "page": 1 }
-14. **change_font** - Change the font family ('helvetica'|'times'|'courier'), font size, style (bold/italic), or color of text in the document.
+15. **change_font** - Change the font family ('helvetica'|'times'|'courier'), font size, style (bold/italic), or color of text in the document.
     Params: { "targetText": "text to restyle", "fontFamily": "times"|"courier"|"helvetica", "fontSize": 14, "bold": true, "italic": false, "color": "blue"|"#000000", "targetPage": 1 (optional) }
-15. **set_theme** - Switch application UI theme between 'dark', 'light', 'pearl' (eye-care warm sepia paper), or 'adaptive' (syncs with OS).
+16. **set_theme** - Switch application UI theme between 'dark', 'light', 'pearl' (eye-care warm sepia paper), or 'adaptive' (syncs with OS).
     Params: { "theme": "dark"|"light"|"pearl"|"adaptive" }
 
 STRICT RELIABILITY, ACTION EXECUTION & NON-DENIAL RULES:
-- CRITICAL: WHEN THE USER ASKS TO CHANGE, REPLACE, ROTATE, WATERMARK, OR NUMBER PAGES, DO NOT JUST DESCRIBE IT IN TEXT! YOU MUST SET THE "action" FIELD TO THE RELEVANT TOOL (e.g. "search_replace", "change_font", "add_watermark", etc.) WITH COMPLETE "params". NEVER SET "action": "none" WHEN A MODIFICATION IS REQUESTED!
+- CRITICAL: WHEN THE USER ASKS TO CHANGE, REPLACE, ROTATE, WATERMARK, OR NUMBER PAGES, DO NOT JUST DESCRIBE IT IN TEXT! YOU MUST SET THE "action" FIELD TO THE RELEVANT TOOL (e.g. "search_replace", "batch_replace", "change_font", "add_watermark", etc.) WITH COMPLETE "params". NEVER SET "action": "none" WHEN A MODIFICATION IS REQUESTED!
+- CRITICAL: WHEN USER ASKS TO CHANGE MULTIPLE ITEMS (e.g. "change name to X and roll number to Y"), ALWAYS USE "batch_replace" WITH A SEPARATE REPLACEMENT FOR EACH ITEM IN "replacements"! NEVER COMBINE MULTIPLE EDITS INTO ONE STRING!
+- CRITICAL: NEVER CONFUSE "SUBJECT NAME" OR "COURSE NAME" WITH THE STUDENT'S NAME! The subject name is the title of the lab or subject (e.g. "DATA STRUCTURE AND ALGORITHM USING C LAB"). The student's name is located under "SUBMITTED BY" or labeled with "NAME: <Student Name>" (e.g. "ALOK KUMAR MISHRA").
 - If the user asks to change font, font size, make text bold, italic, or change text color, trigger "change_font"!
 - If the user asks for dark mode, light mode, pearl mode, or adaptive mode, trigger "set_theme"!
 - If the user says "ok do it", "apply", "yes", or "confirm", examine the prior conversation context, determine what edit was discussed, and IMMEDIATELY TRIGGER THE ACTION!
@@ -313,7 +406,7 @@ STRICT RELIABILITY, ACTION EXECUTION & NON-DENIAL RULES:
 - Always output clean JSON matching:
 {
   "message": "Direct explanation of action executed on the document.",
-  "action": "search_replace|change_font|run_ocr|set_theme|add_watermark|add_header_footer|add_page_numbers|remove_pages|extract_pages|duplicate_page|add_blank_page|reorder_pages|rotate_pages|merge|none",
+  "action": "search_replace|batch_replace|change_font|run_ocr|set_theme|add_watermark|add_header_footer|add_page_numbers|remove_pages|extract_pages|duplicate_page|add_blank_page|reorder_pages|rotate_pages|merge|none",
   "params": {}
 }`;
 
