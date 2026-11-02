@@ -1,5 +1,5 @@
 // FatPDF Service Worker (Network-First for HTML, Cache-First for static assets)
-const CACHE_NAME = 'fatpdf-v6-brand-intro';
+const CACHE_NAME = 'fatpdf-v7-edgeglow';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
