@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="50%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="sparkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="100%" stop-color="#f59e0b"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="16" stdDeviation="24" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Background rounded squircle -->
+  <rect x="32" y="32" width="448" height="448" rx="112" fill="url(#bgGrad)" filter="url(#shadow)"/>
+
+  <!-- PDF Document Outline -->
+  <g transform="translate(128, 108)" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Document Body -->
+    <path d="M 36 0 L 150 0 L 220 70 L 220 270 C 220 284 208 296 194 296 L 36 296 C 22 296 10 284 10 270 L 10 26 C 10 12 22 0 36 0 Z" fill="rgba(255,255,255,0.08)"/>
+    <!-- Folded Corner -->
+    <path d="M 150 0 L 150 70 L 220 70" fill="rgba(255,255,255,0.2)"/>
+    
+    <!-- Document Lines -->
+    <line x1="50" y1="120" x2="180" y2="120" stroke="rgba(255,255,255,0.7)" stroke-width="14"/>
+    <line x1="50" y1="165" x2="180" y2="165" stroke="rgba(255,255,255,0.7)" stroke-width="14"/>
+    <line x1="50" y1="210" x2="130" y2="210" stroke="rgba(255,255,255,0.7)" stroke-width="14"/>
+  </g>
+
+  <!-- AI Sparkle / Star Badge -->
+  <g transform="translate(320, 290)">
+    <circle cx="50" cy="50" r="48" fill="#1e1b4b" stroke="#ffffff" stroke-width="8"/>
+    <path d="M 50 20 Q 50 50 20 50 Q 50 50 50 80 Q 50 50 80 50 Q 50 50 50 20 Z" fill="url(#sparkGrad)"/>
+    <circle cx="50" cy="50" r="6" fill="#ffffff"/>
+  </g>
+</svg>

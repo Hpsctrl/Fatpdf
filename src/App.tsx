@@ -5,7 +5,7 @@ import {
   FileText, Trash2, RotateCw, Merge, FilePlus2, Stamp,
   Search, Type, Eraser, PenTool, Hash, Copy, Plus,
   FileCode, FileSpreadsheet, Undo2, Redo2, Check, Scissors, Scan,
-  Sun, Moon, Monitor, Eye
+  Sun, Moon, Monitor, Eye, Smartphone
 } from 'lucide-react';
 import {
   parsePdfFile, removePages, extractPages, reorderPages, rotatePages,
@@ -169,6 +169,41 @@ const App: React.FC = () => {
   const handleThemeChange = (newTheme: AppTheme) => {
     setTheme(newTheme);
     localStorage.setItem('ai_pdf_theme', newTheme);
+  };
+
+  // PWA Install State
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', () => {
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+    });
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!deferredPrompt) {
+      alert('To install FatPDF as an App:\n\n• On Android (Chrome / Edge): Tap the browser menu (⋮) and select "Install app" or "Add to Home screen".\n• On iPhone (Safari): Tap Share (⎋) and select "Add to Home Screen".\n• On PC/Mac (Chrome/Edge): Click the Install icon in the address bar.');
+      return;
+    }
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setIsInstallable(false);
+    }
+    setDeferredPrompt(null);
   };
 
   const [chatHistory, setChatHistory] = useState<ChatMessage[]>([]);
@@ -934,6 +969,10 @@ const App: React.FC = () => {
                 </>
               )}
 
+              <button className="btn-icon" onClick={handleInstallApp} title="Install FatPDF Web App">
+                <Smartphone size={16} />
+              </button>
+
               <button className="btn-icon" onClick={() => setShowSettings(true)} title="Settings">
                 <Settings size={16} />
               </button>
@@ -1643,6 +1682,27 @@ const App: React.FC = () => {
           <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
             <div className="modal">
               <h2 className="modal-title">Settings</h2>
+
+              <div style={{ marginBottom: '1.2rem', padding: '10px 12px', background: 'var(--bg-color)', borderRadius: '10px', border: '1px solid var(--panel-border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <Smartphone size={15} color="var(--primary)" /> Install Web App (PWA)
+                    </div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Install FatPDF on your device for fullscreen & offline use
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={handleInstallApp}
+                    style={{ padding: '5px 12px', fontSize: '0.76rem', whiteSpace: 'nowrap' }}
+                  >
+                    Install
+                  </button>
+                </div>
+              </div>
 
               <div style={{ marginBottom: '1.2rem' }}>
                 <label style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '6px', display: 'block' }}>
