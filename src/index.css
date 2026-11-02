@@ -312,6 +312,13 @@ header {
   align-items: center;
   gap: 0.6rem;
 }
+.logo-img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  object-fit: cover;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
 .logo svg { color: var(--primary); }
 
 /* Theme Toggle */

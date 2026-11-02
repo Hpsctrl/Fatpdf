@@ -902,7 +902,7 @@ const App: React.FC = () => {
         <main className="main-content glass-panel">
           <header className="app-header">
             <div className="logo">
-              <FileText size={22} />
+              <img src="/logo.png" alt="FatPDF Logo" className="logo-img" />
               <span className="logo-title">FatPDF</span>
             </div>
 
