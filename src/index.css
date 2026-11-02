@@ -112,11 +112,11 @@ body {
   position: relative;
 }
 
-/* Apple Hello 3D Screensaver Intro (GSAP + SVG Line Animation) */
-.apple-hello-overlay {
+/* FatPDF Innovative Holographic Studio Intro */
+.fatpdf-intro-overlay {
   position: fixed;
   inset: 0;
-  background: #000000;
+  background: radial-gradient(circle at 50% 40%, #0d1226 0%, #05070f 75%, #020307 100%);
   z-index: 99999;
   display: flex;
   flex-direction: column;
@@ -125,103 +125,190 @@ body {
   overflow: hidden;
   user-select: none;
   cursor: pointer;
-  perspective: 1000px;
+  perspective: 1200px;
 }
 
-.apple-hello-stage {
+.fatpdf-intro-aura {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(80px);
+}
+.fatpdf-aura-primary {
+  width: clamp(320px, 50vw, 520px);
+  height: clamp(320px, 50vw, 520px);
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.3) 0%, rgba(139, 92, 246, 0.15) 50%, transparent 70%);
+  top: 20%;
+  animation: auraFloat 4s ease-in-out infinite alternate;
+}
+.fatpdf-aura-secondary {
+  width: clamp(280px, 45vw, 450px);
+  height: clamp(280px, 45vw, 450px);
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.22) 0%, rgba(56, 189, 248, 0.12) 50%, transparent 70%);
+  bottom: 20%;
+  animation: auraFloat 4.5s ease-in-out infinite alternate-reverse;
+}
+@keyframes auraFloat {
+  0% { transform: translate(-10px, -10px) scale(0.95); opacity: 0.7; }
+  100% { transform: translate(15px, 15px) scale(1.05); opacity: 1; }
+}
+
+.fatpdf-intro-card {
+  position: relative;
+  width: clamp(300px, 88vw, 440px);
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 26px;
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  padding: 2.2rem 1.8rem;
   display: flex;
   flex-direction: column;
   align-items: center;
-  position: relative;
   text-align: center;
-  padding: 2rem;
-  width: 100%;
-  max-width: 900px;
-}
-
-.apple-ambient-glow {
-  position: absolute;
-  width: clamp(340px, 60vw, 560px);
-  height: clamp(240px, 40vw, 360px);
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(129, 140, 248, 0.28) 0%, rgba(217, 70, 239, 0.18) 35%, rgba(56, 189, 248, 0.1) 65%, transparent 85%);
-  filter: blur(60px);
-  pointer-events: none;
-  animation: appleGlowPulse 1.8s ease-in-out infinite alternate;
-}
-@keyframes appleGlowPulse {
-  0% { transform: scale(0.92); opacity: 0.65; }
-  100% { transform: scale(1.08); opacity: 0.95; }
-}
-
-.apple-hello-svg-wrap {
-  width: clamp(280px, 80vw, 680px);
-  position: relative;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.75), 0 0 50px rgba(99, 102, 241, 0.2);
+  overflow: hidden;
   z-index: 2;
-  filter: drop-shadow(0 12px 36px rgba(129, 140, 248, 0.35));
   will-change: transform, opacity;
 }
 
-.apple-hello-svg {
-  width: 100%;
-  height: auto;
-  overflow: visible;
-  display: block;
+.fatpdf-scan-laser {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #38bdf8 25%, #a855f7 50%, #ec4899 75%, transparent 100%);
+  box-shadow: 0 0 16px rgba(168, 85, 247, 0.9), 0 0 32px rgba(56, 189, 248, 0.6);
+  pointer-events: none;
+  z-index: 10;
+}
+.fatpdf-scan-glow {
+  position: absolute;
+  top: -12px;
+  left: 10%;
+  right: 10%;
+  height: 24px;
+  background: linear-gradient(180deg, rgba(168, 85, 247, 0.25) 0%, transparent 100%);
+  filter: blur(6px);
 }
 
-.apple-lang-badge {
-  margin-top: 1.8rem;
-  padding: 0.4rem 1.1rem;
-  border-radius: 9999px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  color: #cbd5e1;
-  font-size: 0.85rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
+.fatpdf-logo-stage {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 0.6rem;
+  justify-content: center;
+  margin-bottom: 0.8rem;
+}
+.fatpdf-intro-logo-img {
+  width: 86px;
+  height: 86px;
+  border-radius: 22px;
+  object-fit: cover;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 0 30px rgba(99, 102, 241, 0.4);
   position: relative;
   z-index: 2;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
+}
+.fatpdf-logo-ring {
+  position: absolute;
+  inset: -6px;
+  border-radius: 28px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.5) 0%, rgba(217, 70, 239, 0.3) 50%, rgba(56, 189, 248, 0.5) 100%);
+  filter: blur(8px);
+  z-index: 1;
+  animation: ringPulse 2s ease-in-out infinite alternate;
+}
+@keyframes ringPulse {
+  0% { transform: scale(0.96); opacity: 0.6; }
+  100% { transform: scale(1.04); opacity: 1; }
 }
 
-.apple-skip-hint {
-  font-size: 0.72rem;
-  color: #94a3b8;
-  font-weight: 500;
-  border-left: 1px solid rgba(255, 255, 255, 0.2);
-  padding-left: 0.55rem;
-  opacity: 0.8;
-}
-
-.apple-continue-btn {
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  color: #ffffff;
-  border-radius: 9999px;
-  padding: 3px 12px;
-  font-size: 0.76rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  margin-left: 0.35rem;
-  backdrop-filter: blur(8px);
-}
-.apple-continue-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
-  transform: translateY(-1px);
-}
-
-.apple-dot {
-  width: 6px;
-  height: 6px;
+.fatpdf-ai-sparkle {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  background: #38bdf8;
-  box-shadow: 0 0 8px #38bdf8;
+  background: linear-gradient(135deg, #6366f1, #d946ef);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 14px rgba(217, 70, 239, 0.8);
+  z-index: 3;
+}
+
+.fatpdf-intro-title {
+  margin: 0.5rem 0 0.2rem;
+  font-size: clamp(2.2rem, 7vw, 2.8rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.title-gradient {
+  background: linear-gradient(135deg, #ffffff 20%, #c7d2fe 60%, #e0e7ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 4px 16px rgba(129, 140, 248, 0.35));
+}
+
+.fatpdf-intro-sub {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.fatpdf-feature-pills {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 1.3rem;
+  flex-wrap: wrap;
+}
+.feature-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 9999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  backdrop-filter: blur(10px);
+}
+.feature-pill svg {
+  color: #818cf8;
+}
+
+.fatpdf-action-row {
+  margin-top: 1.5rem;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+.fatpdf-enter-btn {
+  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+  padding: 8px 24px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.45);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.fatpdf-enter-btn:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 12px 30px rgba(79, 70, 229, 0.6);
 }
 
 /* Scanned Document Banner */

@@ -19,25 +19,10 @@ import { processAIRequest, runOnlineOcr } from './utils/ai';
 import type { AiProvider, ChatMessage } from './utils/ai';
 import PdfViewer from './components/PdfViewer';
 import { SignatureModal } from './components/SignatureModal';
-import AppleHelloIntro from './components/AppleHelloIntro';
+import FatPdfIntro from './components/FatPdfIntro';
 
 export const APP_VERSION = 'v1.1.0';
 export type AppTheme = 'adaptive' | 'light' | 'dark' | 'pearl';
-
-const APPLE_GREETINGS = [
-  { word: 'hello', lang: 'English', sub: 'Welcome', isScript: true },
-  { word: 'bonjour', lang: 'Français', sub: 'Bienvenue', isScript: true },
-  { word: 'hola', lang: 'Español', sub: 'Bienvenido', isScript: true },
-  { word: 'ciao', lang: 'Italiano', sub: 'Benvenuto', isScript: true },
-  { word: 'hallo', lang: 'Deutsch', sub: 'Willkommen', isScript: true },
-  { word: 'olá', lang: 'Português', sub: 'Bem-vindo', isScript: true },
-  { word: 'नमस्ते', lang: 'Hindi', sub: 'स्वागत है', isScript: false },
-  { word: 'こんにちは', lang: 'Japanese', sub: 'ようこそ', isScript: false },
-  { word: '你好', lang: 'Chinese', sub: '欢迎', isScript: false },
-  { word: '안녕하세요', lang: 'Korean', sub: '환영합니다', isScript: false },
-  { word: 'مرحبا', lang: 'Arabic', sub: 'أهلاً وسهلاً', isScript: false },
-  { word: 'привет', lang: 'Russian', sub: 'Добро пожаловать', isScript: false },
-];
 
 type ToolCategory = 'ai' | 'edit' | 'pages' | 'export';
 
@@ -215,12 +200,6 @@ const App: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Random Apple Hello greeting chosen on each load
-  const [randomGreeting] = useState(() => {
-    const idx = Math.floor(Math.random() * APPLE_GREETINGS.length);
-    return APPLE_GREETINGS[idx];
-  });
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -859,10 +838,7 @@ const App: React.FC = () => {
   return (
     <>
       {isEntering && (
-        <AppleHelloIntro
-          onFinish={() => setIsEntering(false)}
-          langInfo={randomGreeting}
-        />
+        <FatPdfIntro onFinish={() => setIsEntering(false)} />
       )}
       <div className="app-container">
         <main className="main-content glass-panel">
