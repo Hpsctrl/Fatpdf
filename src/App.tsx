@@ -19,6 +19,7 @@ import { processAIRequest, runOnlineOcr } from './utils/ai';
 import type { AiProvider, ChatMessage } from './utils/ai';
 import PdfViewer from './components/PdfViewer';
 import { SignatureModal } from './components/SignatureModal';
+import AppleHelloIntro from './components/AppleHelloIntro';
 
 export const APP_VERSION = 'v1.1.0';
 export type AppTheme = 'adaptive' | 'light' | 'dark' | 'pearl';
@@ -86,7 +87,6 @@ const App: React.FC = () => {
   const [zoom, setZoom] = useState(1.2);
   const [loading, setLoading] = useState(false);
   const [isEntering, setIsEntering] = useState(true);
-  const [fadeLoading, setFadeLoading] = useState(false);
 
   // Undo / Redo history stack
   const [history, setHistory] = useState<Uint8Array[]>([]);
@@ -221,17 +221,6 @@ const App: React.FC = () => {
     const idx = Math.floor(Math.random() * APPLE_GREETINGS.length);
     return APPLE_GREETINGS[idx];
   });
-
-  useEffect(() => {
-    // Exactly 1.0 second Apple Hello animation (0.8s animated reveal, 0.2s fade)
-    const t1 = setTimeout(() => setFadeLoading(true), 800);
-    const t2 = setTimeout(() => setIsEntering(false), 1000);
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-    };
-  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -870,33 +859,10 @@ const App: React.FC = () => {
   return (
     <>
       {isEntering && (
-        <div className={`loading-screen ${fadeLoading ? 'fade-out' : ''}`}>
-          <div className="apple-hello-stage">
-            <div className="apple-ambient-glow" />
-            <div className={`apple-hello-text ${randomGreeting.isScript ? 'apple-script' : 'apple-universal'}`}>
-              {randomGreeting.word}
-            </div>
-            <svg className="apple-hello-stroke" viewBox="0 0 220 22" fill="none">
-              <path
-                d="M 12 14 Q 75 4, 130 14 T 208 8"
-                stroke="url(#appleUnderlineGrad)"
-                strokeWidth="3.2"
-                strokeLinecap="round"
-              />
-              <defs>
-                <linearGradient id="appleUnderlineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#818cf8" />
-                  <stop offset="50%" stopColor="#c084fc" />
-                  <stop offset="100%" stopColor="#38bdf8" />
-                </linearGradient>
-              </defs>
-            </svg>
-            <div className="apple-lang-badge">
-              <span className="apple-dot" />
-              <span>{randomGreeting.lang} • {randomGreeting.sub}</span>
-            </div>
-          </div>
-        </div>
+        <AppleHelloIntro
+          onFinish={() => setIsEntering(false)}
+          langInfo={randomGreeting}
+        />
       )}
       <div className="app-container">
         <main className="main-content glass-panel">

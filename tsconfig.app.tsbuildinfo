@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/PdfViewer.tsx","./src/components/SignatureModal.tsx","./src/utils/ai.ts","./src/utils/pdf.ts"],"version":"5.9.3"}
+{"root":["./src/App.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/AppleHelloIntro.tsx","./src/components/PdfViewer.tsx","./src/components/SignatureModal.tsx","./src/utils/ai.ts","./src/utils/pdf.ts"],"version":"5.9.3"}
