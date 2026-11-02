@@ -1,10 +1,11 @@
 // FatPDF Service Worker (Network-First for HTML, Cache-First for static assets)
-const CACHE_NAME = 'fatpdf-v7-edgeglow';
+const CACHE_NAME = 'fatpdf-v8-lottie-halo';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.webmanifest',
   '/logo.png',
+  '/halo.json',
   '/favicon.png',
   '/icon.svg',
   '/icon-192.png',

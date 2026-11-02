@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
+import lottie from 'lottie-web';
 
 interface FatPdfIntroProps {
   onFinish: () => void;
@@ -7,61 +8,99 @@ interface FatPdfIntroProps {
 
 export const FatPdfIntro: React.FC<FatPdfIntroProps> = ({ onFinish }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const lottieRef = useRef<HTMLDivElement>(null);
   const logoRef = useRef<HTMLDivElement>(null);
-  const haloRef = useRef<HTMLDivElement>(null);
-  const edgeGlowRef = useRef<HTMLDivElement>(null);
+  const edgeBloomRef = useRef<SVGRectElement>(null);
+  const edgeLeadRef = useRef<SVGRectElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // 1. Initialize exact Lottie Halo Animation
+    let lottieAnim: any = null;
+    if (lottieRef.current) {
+      lottieAnim = lottie.loadAnimation({
+        container: lottieRef.current,
+        renderer: 'svg',
+        loop: true,
+        autoplay: true,
+        path: '/halo.json',
+      });
+    }
+
     const container = containerRef.current;
     const logo = logoRef.current;
-    const halo = haloRef.current;
-    const edgeGlow = edgeGlowRef.current;
+    const lottieEl = lottieRef.current;
+    const edgeBloom = edgeBloomRef.current;
+    const edgeLead = edgeLeadRef.current;
     const text = textRef.current;
 
-    if (!container || !logo || !halo || !edgeGlow) return;
+    if (!container || !logo || !lottieEl || !edgeBloom || !edgeLead) return;
 
-    // Initial setup
-    gsap.set(container, { opacity: 1 });
-    gsap.set(edgeGlow, { opacity: 0 });
-    gsap.set(logo, { scale: 0.7, opacity: 0 });
-    gsap.set(halo, { scale: 0.5, opacity: 0, rotation: 0 });
-    if (text) gsap.set(text, { opacity: 0, y: 12 });
+    // Calculate screen perimeter
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const perimeter = Math.max(2 * (w + h), 2500);
 
-    // Exactly 2-second total intro timeline
+    // Initial state setup
+    gsap.set([edgeBloom, edgeLead], {
+      strokeDasharray: perimeter,
+      strokeDashoffset: perimeter,
+      opacity: 1,
+    });
+
+    gsap.set(lottieEl, {
+      scale: 0.6,
+      opacity: 0,
+    });
+
+    gsap.set(logo, {
+      scale: 0.5,
+      opacity: 0,
+      y: 10,
+    });
+
+    if (text) {
+      gsap.set(text, {
+        opacity: 0,
+        y: 8,
+      });
+    }
+
+    // 2.0s total intro timeline
     const tl = gsap.timeline({
       onComplete: () => {
         onFinish();
       },
     });
 
-    // 0.0s - 0.4s: Edge Glow illuminates screen perimeter & AI Halo bursts
-    tl.to(edgeGlow, {
-      opacity: 1,
-      duration: 0.35,
-      ease: 'power2.out',
+    // Step 1: Edge glow starts from one point and races around the whole screen perimeter
+    tl.to([edgeBloom, edgeLead], {
+      strokeDashoffset: 0,
+      duration: 0.75,
+      ease: 'power2.inOut',
     })
+      // Step 2: Lottie Halo blooms in the center
       .to(
-        halo,
+        lottieEl,
         {
           opacity: 1,
           scale: 1,
-          rotation: 180,
-          duration: 0.6,
-          ease: 'back.out(1.6)',
+          duration: 0.55,
+          ease: 'back.out(1.5)',
         },
-        0.05
+        0.35
       )
-      // 0.15s - 0.6s: PDF Logo pops into center of AI Halo
+      // Step 3: PDF Logo appears inside the Lottie Halo
       .to(
         logo,
         {
           opacity: 1,
           scale: 1,
+          y: 0,
           duration: 0.5,
           ease: 'back.out(1.8)',
         },
-        0.15
+        0.5
       );
 
     if (text) {
@@ -73,142 +112,112 @@ export const FatPdfIntro: React.FC<FatPdfIntroProps> = ({ onFinish }) => {
           duration: 0.35,
           ease: 'power2.out',
         },
-        0.35
+        0.7
       );
     }
 
-    // Continuous rotation of AI Halo throughout the 2s
-    gsap.to(halo, {
-      rotation: 360,
-      duration: 2.0,
-      ease: 'none',
-    });
-
-    // 1.7s - 2.0s: Smooth dissolve into the app (exact 2s mark)
+    // Step 4: At 1.75s, smoothly dissolve into the app to complete exactly at 2.0s
     tl.to(
       container,
       {
         opacity: 0,
-        scale: 1.03,
-        duration: 0.3,
+        scale: 1.04,
+        duration: 0.25,
         ease: 'power2.inOut',
       },
-      1.7
+      1.75
     );
 
     return () => {
       tl.kill();
+      if (lottieAnim) lottieAnim.destroy();
     };
   }, [onFinish]);
 
   return (
     <div
       ref={containerRef}
-      className="edge-glow-intro-overlay"
+      className="edge-trace-intro-overlay"
       onClick={onFinish}
       role="button"
       tabIndex={0}
       title="Tap to skip"
     >
-      {/* 1. Full Screen Siri / Gemini Edge Glow (react-native-edge-glow style) */}
-      <div ref={edgeGlowRef} className="screen-edge-glow-wrapper">
+      {/* 1. Full Screen Perimeter Edge Trace (glow starts from one point and edges around whole screen) */}
+      <div className="screen-edge-trace-container">
         <svg
-          className="screen-edge-glow-svg"
+          className="screen-edge-trace-svg"
           width="100%"
           height="100%"
           preserveAspectRatio="none"
         >
           <defs>
-            {/* Animated Siri / Gemini Spectrum Gradient */}
-            <linearGradient id="edgeSpectrumGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <linearGradient id="edgeTraceGradient" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#38bdf8" />
-              <stop offset="25%" stopColor="#818cf8" />
-              <stop offset="50%" stopColor="#d946ef" />
-              <stop offset="75%" stopColor="#ec4899" />
-              <stop offset="100%" stopColor="#38bdf8" />
+              <stop offset="35%" stopColor="#60a5fa" />
+              <stop offset="70%" stopColor="#818cf8" />
+              <stop offset="100%" stopColor="#c084fc" />
             </linearGradient>
 
-            <filter id="edgeDeepBloom" x="-25%" y="-25%" width="150%" height="150%">
-              <feGaussianBlur stdDeviation="32" result="blur" />
-            </filter>
-            <filter id="edgeMidBloom" x="-15%" y="-15%" width="130%" height="130%">
-              <feGaussianBlur stdDeviation="14" result="blur" />
+            <filter id="edgeTraceBloomFilter" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="24" result="blurDeep" />
+              <feGaussianBlur stdDeviation="10" result="blurMid" />
+              <feMerge>
+                <feMergeNode in="blurDeep" />
+                <feMergeNode in="blurMid" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
             </filter>
           </defs>
 
-          {/* Deep Inward Feathering Glow Ring */}
+          {/* Deep luminous bloom edge trace */}
           <rect
-            x="0"
-            y="0"
-            width="100%"
-            height="100%"
-            rx="36"
+            ref={edgeBloomRef}
+            x="4"
+            y="4"
+            width="calc(100% - 8px)"
+            height="calc(100% - 8px)"
+            rx="32"
             fill="none"
-            stroke="url(#edgeSpectrumGrad)"
-            strokeWidth="48"
-            opacity="0.45"
-            filter="url(#edgeDeepBloom)"
+            stroke="url(#edgeTraceGradient)"
+            strokeWidth="32"
+            opacity="0.65"
+            filter="url(#edgeTraceBloomFilter)"
           />
 
-          {/* Mid-range Radiant Bloom Ring */}
+          {/* Crisp leading edge line */}
           <rect
-            x="0"
-            y="0"
-            width="100%"
-            height="100%"
-            rx="36"
+            ref={edgeLeadRef}
+            x="4"
+            y="4"
+            width="calc(100% - 8px)"
+            height="calc(100% - 8px)"
+            rx="32"
             fill="none"
-            stroke="url(#edgeSpectrumGrad)"
-            strokeWidth="22"
-            opacity="0.75"
-            filter="url(#edgeMidBloom)"
-          />
-
-          {/* Crisp Perimeter Light Line */}
-          <rect
-            x="0"
-            y="0"
-            width="100%"
-            height="100%"
-            rx="36"
-            fill="none"
-            stroke="url(#edgeSpectrumGrad)"
-            strokeWidth="5"
+            stroke="#ffffff"
+            strokeWidth="4"
             opacity="0.95"
           />
         </svg>
-
-        {/* Ambient Corner Flare Highlights */}
-        <div className="corner-flare flare-top-left" />
-        <div className="corner-flare flare-top-right" />
-        <div className="corner-flare flare-bottom-left" />
-        <div className="corner-flare flare-bottom-right" />
       </div>
 
-      {/* 2. Center Stage: PDF Logo with AI Halo Lottie-style Animation */}
-      <div className="intro-center-stage">
-        {/* Lottie-style Multi-Layered AI Halo Orb */}
-        <div ref={haloRef} className="ai-halo-orb-container">
-          <div className="ai-halo-swirl swirl-1" />
-          <div className="ai-halo-swirl swirl-2" />
-          <div className="ai-halo-swirl swirl-3" />
-          <div className="ai-halo-glow-core" />
-          <div className="ai-halo-spinning-ring" />
-          <div className="ai-halo-particles" />
-        </div>
+      {/* 2. Central Stage: Lottie Halo in the background + PDF Logo appearing inside it */}
+      <div className="halo-logo-stage">
+        {/* Lottie Animation: blue2-pvT5LopBd6 */}
+        <div ref={lottieRef} className="lottie-halo-wrapper" />
 
-        {/* Center PDF Logo */}
-        <div ref={logoRef} className="intro-logo-container">
+        {/* PDF Logo centered inside the Halo */}
+        <div ref={logoRef} className="pdf-logo-center-wrapper">
           <img
             src="/logo.png"
             alt="FatPDF"
-            className="intro-pdf-logo-img"
+            className="pdf-logo-inside-halo"
           />
         </div>
 
-        {/* Brand Text */}
-        <div ref={textRef} className="intro-brand-badge">
-          <span className="intro-brand-name">FatPDF</span>
+        {/* Brand Label */}
+        <div ref={textRef} className="intro-title-wrapper">
+          <span className="intro-title-text">FatPDF</span>
         </div>
       </div>
     </div>
