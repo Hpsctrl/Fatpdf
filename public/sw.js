@@ -1,5 +1,5 @@
 // FatPDF Service Worker (Network-First for HTML, Cache-First for static assets)
-const CACHE_NAME = 'fatpdf-v8-lottie-halo';
+const CACHE_NAME = 'fatpdf-v10-gemini-aurora';
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
