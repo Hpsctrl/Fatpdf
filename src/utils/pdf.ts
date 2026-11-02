@@ -262,7 +262,7 @@ export async function searchAndReplaceTextResult(
           updatedStr = replaceText;
         }
       }
-      // 1.2 Student Name specific match: e.g. "NAME: ALOK KUMAR MISHRA"
+      // 1.2 Student Name specific match: e.g. "NAME: JOHN DOE"
       else if (isNameLabel && /(?:NAME|STUDENT\s*NAME)\s*:\s*([A-Za-z\s.'-]+)/i.test(str)) {
         matched = true;
         const m = str.match(/((?:NAME|STUDENT\s*NAME)\s*:\s*)([A-Za-z\s.'-]+)/i);
@@ -272,7 +272,7 @@ export async function searchAndReplaceTextResult(
           updatedStr = `NAME: ${replaceText}`;
         }
       }
-      // 1.3 Punctuation-insensitive match (e.g. "roll.no." matching "roll no: 263712" or "ROLL NO")
+      // 1.3 Punctuation-insensitive match (e.g. "roll.no." matching "roll no: 102938" or "ROLL NO")
       else if (cleanFind.length >= 3 && cleanStr.includes(cleanFind)) {
         matched = true;
         // If string has a label: value pattern and user gave a value
@@ -289,7 +289,7 @@ export async function searchAndReplaceTextResult(
           updatedStr = replaceText;
         }
       }
-      // 1.3 Label-aware match on item (e.g., user said "roll.no." or "erp", item is "ROLL NO: 263712")
+      // 1.3 Label-aware match on item (e.g., user said "roll.no." or "erp", item is "ROLL NO: 102938")
       else if (isRollLabel && /(?:roll|erp|reg)[.\s_-]*(?:no|number)?[.\s_-]*:?\s*([0-9A-Za-z]+)/i.test(str)) {
         matched = true;
         const m = str.match(/((?:ROLL|ERP|REG)[.\s_-]*(?:NO|NUMBER)?[.\s_-]*:?\s*)([0-9A-Za-z]+)/i);
@@ -330,7 +330,7 @@ export async function searchAndReplaceTextResult(
       }
     }
 
-    // Pass 2: Line-level grouping (for items split horizontally like ["ROLL NO: ", "263712"])
+    // Pass 2: Line-level grouping (for items split horizontally like ["ROLL NO: ", "102938"])
     if (replaceCount === 0) {
       // Group items by baseline Y (within 4 points)
       const lineMap = new Map<number, PdfTextItem[]>();

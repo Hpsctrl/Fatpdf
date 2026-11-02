@@ -96,7 +96,7 @@ export function extractRollNo(text: string): string | null {
 }
 
 /**
- * Intelligent helper to extract teacher name (e.g. SUBMITTED TO: MRS. VAISHALI).
+ * Intelligent helper to extract teacher/evaluator name (e.g. SUBMITTED TO: DR. SMITH).
  */
 export function extractTeacherName(text: string): string | null {
   if (!text) return null;
@@ -145,7 +145,7 @@ export function detectQuickIntent(prompt: string, pdfData: PdfData): AiResult | 
   }
 
   // 1.5. Compound Student Name AND Roll Number Edit
-  // e.g. "In first page change name to shayam Sunder Yadav and roll number to 272827"
+  // e.g. "In first page change name to Jane Doe and roll number to 102938"
   const hasNameKw = /\b(?:student\s+|my\s+)?name\b/i.test(clean);
   const hasRollKw = /\b(?:roll|erp|reg)[.\s_-]*(?:no|number)?\b/i.test(clean);
 
@@ -224,7 +224,7 @@ export function detectQuickIntent(prompt: string, pdfData: PdfData): AiResult | 
   }
 
   // 3.5. Change font / formatting shortcut
-  // e.g. "change font of Harendra to times roman", "make name bold", "change font to courier"
+  // e.g. "change font of Title to times roman", "make name bold", "change font to courier"
   const fontMatch = clean.match(/(?:change|set)\s+font(?:\s+of)?\s+["']?([^"']+)["']?\s+to\s+([A-Za-z0-9\s#-]+)/i);
   if (fontMatch) {
     const targetText = fontMatch[1].trim();
@@ -397,11 +397,11 @@ AVAILABLE ACTIONS YOU CAN TRIGGER:
 STRICT RELIABILITY, ACTION EXECUTION & NON-DENIAL RULES:
 - CRITICAL: WHEN THE USER ASKS TO CHANGE, REPLACE, ROTATE, WATERMARK, OR NUMBER PAGES, DO NOT JUST DESCRIBE IT IN TEXT! YOU MUST SET THE "action" FIELD TO THE RELEVANT TOOL (e.g. "search_replace", "batch_replace", "change_font", "add_watermark", etc.) WITH COMPLETE "params". NEVER SET "action": "none" WHEN A MODIFICATION IS REQUESTED!
 - CRITICAL: WHEN USER ASKS TO CHANGE MULTIPLE ITEMS (e.g. "change name to X and roll number to Y"), ALWAYS USE "batch_replace" WITH A SEPARATE REPLACEMENT FOR EACH ITEM IN "replacements"! NEVER COMBINE MULTIPLE EDITS INTO ONE STRING!
-- CRITICAL: NEVER CONFUSE "SUBJECT NAME" OR "COURSE NAME" WITH THE STUDENT'S NAME! The subject name is the title of the lab or subject (e.g. "DATA STRUCTURE AND ALGORITHM USING C LAB"). The student's name is located under "SUBMITTED BY" or labeled with "NAME: <Student Name>" (e.g. "ALOK KUMAR MISHRA").
+- CRITICAL: NEVER CONFUSE "SUBJECT NAME" OR "COURSE NAME" WITH THE STUDENT'S NAME! The subject name is the title of the lab or subject (e.g. "DATA STRUCTURE AND ALGORITHM USING C LAB"). The student's name is located under "SUBMITTED BY" or labeled with "NAME: <Student Name>" (e.g. "JOHN DOE").
 - If the user asks to change font, font size, make text bold, italic, or change text color, trigger "change_font"!
 - If the user asks for dark mode, light mode, pearl mode, or adaptive mode, trigger "set_theme"!
 - If the user says "ok do it", "apply", "yes", or "confirm", examine the prior conversation context, determine what edit was discussed, and IMMEDIATELY TRIGGER THE ACTION!
-- In "search_replace", set "find" to the exact string found in the PDF text (e.g. "MRS. VAISHALI" or "NAME: HARENDRA PRATAP SINGH") and "replace" to the user's desired text.
+- In "search_replace", set "find" to the exact string found in the PDF text (e.g. "DR. SMITH" or "NAME: JOHN DOE") and "replace" to the user's desired text.
 - If a page contains a scanned image, photo, or screenshot of another document, NEVER refuse or say "I cannot edit this". Trigger "run_ocr" to extract text or "search_replace" to replace text visually!
 - Always output clean JSON matching:
 {

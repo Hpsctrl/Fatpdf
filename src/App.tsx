@@ -88,7 +88,7 @@ const App: React.FC = () => {
   const [searchAllPages, setSearchAllPages] = useState(true);
 
   const [showWatermarkModal, setShowWatermarkModal] = useState(false);
-  const [wmText, setWmText] = useState('HARENDRA PRATAP SINGH 252681');
+  const [wmText, setWmText] = useState('CONFIDENTIAL');
   const [wmTargetAll, setWmTargetAll] = useState(true);
   const [wmOpacity, setWmOpacity] = useState(0.22);
   const [wmAngle, setWmAngle] = useState(-45);
@@ -1301,9 +1301,9 @@ const App: React.FC = () => {
                   {pdfData && (
                     <div className="quick-suggestions">
                       <button type="button" className="suggestion-chip" onClick={() => setPrompt('Summarize this document')}>📝 Summarize</button>
-                      <button type="button" className="suggestion-chip" onClick={() => setPrompt('Change name on page 1 to Harendra Pratap Singh')}>✏️ Change Name</button>
+                      <button type="button" className="suggestion-chip" onClick={() => setPrompt('Change name on page 1 to John Doe')}>✏️ Change Name</button>
                       <button type="button" className="suggestion-chip" onClick={() => setPrompt('Change font of name to Times Roman Bold 16')}>🔤 Edit Font</button>
-                      <button type="button" className="suggestion-chip" onClick={() => setPrompt('Add watermark Harendra Pratap Singh ERP 252681 on page 1 only')}>💧 Watermark Page 1</button>
+                      <button type="button" className="suggestion-chip" onClick={() => setPrompt('Add watermark CONFIDENTIAL on page 1 only')}>💧 Watermark Page 1</button>
                       <button type="button" className="suggestion-chip" onClick={() => setPrompt('Add page numbers at bottom')}>🔢 Number Pages</button>
                       <button type="button" className="suggestion-chip" onClick={() => setPrompt('Switch to dark mode')}>🌙 Dark Mode</button>
                       <button type="button" className="suggestion-chip" onClick={() => setPrompt('Switch to pearl mode')}>📜 Pearl Mode</button>
@@ -1351,7 +1351,7 @@ const App: React.FC = () => {
               <div style={{ display: 'flex', gap: '6px', overflowX: 'auto', padding: '6px 12px', background: 'var(--card-bg)', borderTop: '1px solid var(--panel-border)', whiteSpace: 'nowrap' }}>
                 <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt(`Online OCR on Page ${currentPage}`)}>⚡ Online OCR</button>
                 <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Summarize Page 1')}>📑 Page 1 Info</button>
-                <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Change student name on page 1 to Harendra Pratap Singh')}>✏️ Change Name</button>
+                <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Change name on page 1 to John Doe')}>✏️ Change Name</button>
                 <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Change font of name to Times Roman Bold 16')}>🔤 Change Font</button>
                 <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Number all pages at bottom-center')}>🔢 Page Numbers</button>
                 <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Switch to dark mode')}>🌙 Dark Mode</button>
@@ -1389,7 +1389,7 @@ const App: React.FC = () => {
                 <input
                   type="text"
                   autoFocus
-                  placeholder="e.g. HARENDRA PRATAP SINGH"
+                  placeholder="e.g. John Doe, Approved, Confidential"
                   value={overlayInputText}
                   onChange={(e) => setOverlayInputText(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleApplyOverlayText(); }}
@@ -1485,7 +1485,7 @@ const App: React.FC = () => {
                 <label>Find Text:</label>
                 <input
                   type="text"
-                  placeholder="e.g. ALOK KUMAR MISHRA"
+                  placeholder="e.g. Old Text or Name"
                   value={searchFind}
                   onChange={(e) => setSearchFind(e.target.value)}
                 />
@@ -1494,7 +1494,7 @@ const App: React.FC = () => {
                 <label>Replace With:</label>
                 <input
                   type="text"
-                  placeholder="e.g. HARENDRA PRATAP SINGH"
+                  placeholder="e.g. New Text or Name"
                   value={searchReplace}
                   onChange={(e) => setSearchReplace(e.target.value)}
                 />
