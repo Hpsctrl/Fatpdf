@@ -10,7 +10,7 @@ All document processing runs directly in the browser using `pdf-lib` and `pdfjs-
 
 ### 🤖 AI Document Assistant
 - **Zero-Latency Intent Engine**: Instant local execution for common commands (search & replace, watermark, reorder, rotate, theme switches) without API calls.
-- **Online OCR**: Vision-powered text extraction from scanned documents and images using Google Gemini Vision and Groq.
+- **Background Online OCR & Message Queuing**: Vision-powered text extraction from scanned documents and images runs asynchronously in the background without blocking the UI. Users can freely chat while OCR is running—messages sent during extraction are smoothly queued and processed automatically as soon as OCR indexing completes.
 - **Natural Language PDF Manipulation**: Ask in plain English to replace text, summarize sections, adjust formatting, or reorder pages.
 
 ### ✏️ Interactive PDF Studio

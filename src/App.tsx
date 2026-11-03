@@ -197,13 +197,34 @@ const App: React.FC = () => {
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [mergeWaiting, setMergeWaiting] = useState(false);
 
+  // Background OCR & Message Queue State
+  const [ocrRunning, setOcrRunning] = useState(false);
+  const [ocrPage, setOcrPage] = useState<number | null>(null);
+  const [pendingQueueLength, setPendingQueueLength] = useState(0);
+
+  const ocrRunningRef = useRef(false);
+  const ocrPageRef = useRef<number | null>(null);
+  const pendingMessagesRef = useRef<string[]>([]);
+  const chatHistoryRef = useRef<ChatMessage[]>(chatHistory);
+  const pdfDataRef = useRef<PdfData | null>(pdfData);
+  const uploadIdRef = useRef(0);
+  const executeUserPromptRef = useRef<((userMsg: string, docToUse?: PdfData) => Promise<PdfData>) | null>(null);
+
+  useEffect(() => {
+    chatHistoryRef.current = chatHistory;
+  }, [chatHistory]);
+
+  useEffect(() => {
+    pdfDataRef.current = pdfData;
+  }, [pdfData]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [chatHistory, loading]);
+  }, [chatHistory, loading, ocrRunning]);
 
   // Keyboard shortcut listener for Ctrl+Z and Ctrl+Y
   useEffect(() => {
@@ -221,20 +242,23 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [history, redoStack, pdfData]);
 
-  const updatePdfStateWithHistory = async (newBytes: Uint8Array, actionName?: string) => {
-    if (!pdfData) return;
-    setHistory(prev => [...prev, pdfData.rawBytes]);
+  const updatePdfStateWithHistory = async (newBytes: Uint8Array, actionName?: string): Promise<PdfData | undefined> => {
+    const baseDoc = pdfDataRef.current || pdfData;
+    if (!baseDoc) return;
+    setHistory(prev => [...prev, baseDoc.rawBytes]);
     setRedoStack([]); // Clear redo on fresh action
 
     const newData = await parsePdfFile(
-      new File([newBytes as any], pdfData.fileName, { type: 'application/pdf' })
+      new File([newBytes as any], baseDoc.fileName, { type: 'application/pdf' })
     );
     setPdfData(newData);
+    pdfDataRef.current = newData;
     if (currentPage > newData.totalPages) setCurrentPage(newData.totalPages);
 
     if (actionName) {
       setChatHistory(prev => [...prev, { role: 'ai', text: `✨ Done: ${actionName}` }]);
     }
+    return newData;
   };
 
   const handleUndo = async () => {
@@ -265,18 +289,27 @@ const App: React.FC = () => {
     setChatHistory(prev => [...prev, { role: 'ai', text: '🔁 Redid change.' }]);
   };
 
-  /* ─── Online OCR Handler ─── */
-  const handleRunOcr = async (targetPageNum?: number, customData?: PdfData) => {
-    const activeDoc = customData || pdfData;
+  /* ─── Online OCR Handler (Non-blocking background execution with message queuing) ─── */
+  const handleRunOcr = async (targetPageNum?: number, customData?: PdfData, targetUploadId?: number) => {
+    const activeDoc = customData || pdfDataRef.current || pdfData;
     if (!activeDoc) return;
     const pageNum = targetPageNum || currentPage;
     if (pageNum < 1 || pageNum > activeDoc.totalPages) return;
 
+    // Prevent duplicate parallel OCR on the exact same page
+    if (ocrRunningRef.current && ocrPageRef.current === pageNum) {
+      return;
+    }
+
     try {
-      setLoading(true);
+      setOcrRunning(true);
+      ocrRunningRef.current = true;
+      setOcrPage(pageNum);
+      ocrPageRef.current = pageNum;
+
       setChatHistory(prev => [
         ...prev,
-        { role: 'system', text: `⚡ Running Online OCR on Page ${pageNum} using AI Vision...` }
+        { role: 'system', text: `⚡ Running Online OCR on Page ${pageNum} in the background... You can message and chat anytime!` }
       ]);
 
       const { base64 } = await extractPageAsBase64Image(activeDoc.rawBytes, pageNum, 2.0);
@@ -291,7 +324,13 @@ const App: React.FC = () => {
         activeModelName
       );
 
-      const updatedPages = [...activeDoc.pages];
+      // Discard stale result if user uploaded a different document in the meantime
+      if (targetUploadId !== undefined && targetUploadId !== uploadIdRef.current) {
+        return;
+      }
+
+      const currentLatestDoc = pdfDataRef.current || activeDoc;
+      const updatedPages = [...currentLatestDoc.pages];
       updatedPages[pageNum - 1] = {
         ...pageInfo,
         text: ocrResult.fullText,
@@ -301,11 +340,12 @@ const App: React.FC = () => {
       };
 
       const updatedDoc: PdfData = {
-        ...activeDoc,
+        ...currentLatestDoc,
         pages: updatedPages,
       };
 
       setPdfData(updatedDoc);
+      pdfDataRef.current = updatedDoc;
 
       setChatHistory(prev => [
         ...prev,
@@ -327,7 +367,28 @@ const App: React.FC = () => {
         { role: 'ai', text: `❌ Online OCR Notice: ${msg}` }
       ]);
     } finally {
-      setLoading(false);
+      setOcrRunning(false);
+      ocrRunningRef.current = false;
+      setOcrPage(null);
+      ocrPageRef.current = null;
+
+      // Automatically process any queued messages sent while OCR was running
+      if (pendingMessagesRef.current.length > 0) {
+        const queuedList = [...pendingMessagesRef.current];
+        pendingMessagesRef.current = [];
+        setPendingQueueLength(0);
+
+        let latestDoc = pdfDataRef.current || activeDoc;
+        for (const queuedMsg of queuedList) {
+          setChatHistory(prev => [
+            ...prev,
+            { role: 'system', text: `🚀 Processing your queued message: "${queuedMsg}"...` }
+          ]);
+          if (executeUserPromptRef.current) {
+            latestDoc = await executeUserPromptRef.current(queuedMsg, latestDoc);
+          }
+        }
+      }
     }
   };
 
@@ -335,6 +396,7 @@ const App: React.FC = () => {
   const handleFileUpload = async (file: File) => {
     try {
       setLoading(true);
+      const currentUploadId = ++uploadIdRef.current;
       let targetFile: File | { name: string; arrayBuffer: () => Promise<ArrayBuffer> } = file;
       const isImg = file.type.startsWith('image/') || /\.(png|jpe?g|webp|bmp|gif)$/i.test(file.name);
 
@@ -350,6 +412,7 @@ const App: React.FC = () => {
 
       const data = await parsePdfFile(targetFile);
       setPdfData(data);
+      pdfDataRef.current = data;
       setCurrentPage(1);
       setZoom(1.2);
       setHistory([]);
@@ -358,23 +421,23 @@ const App: React.FC = () => {
       if (isImg) {
         setChatHistory(prev => [
           ...prev,
-          { role: 'system', text: `✨ Converted "${file.name}" to document! Running Online OCR to extract text...` }
+          { role: 'system', text: `✨ Converted "${file.name}" to document! Running Online OCR in the background...` }
         ]);
         setTimeout(() => {
-          handleRunOcr(1, data);
-        }, 120);
+          handleRunOcr(1, data, currentUploadId);
+        }, 50);
       } else {
         const hasScanned = data.pages.some(p => p.isScanned);
         setChatHistory([
           {
             role: 'system',
-            text: `Loaded "${data.fileName}" — ${data.totalPages} pages.${hasScanned ? ' 📸 Note: Scanned/image page detected. Indexing Page 1 with Online OCR automatically...' : ''}`
+            text: `Loaded "${data.fileName}" — ${data.totalPages} pages.${hasScanned ? ' 📸 Note: Scanned/image page detected. Indexing Page 1 with Online OCR in the background...' : ''}`
           }
         ]);
         if (hasScanned) {
           setTimeout(() => {
-            handleRunOcr(1, data);
-          }, 150);
+            handleRunOcr(1, data, currentUploadId);
+          }, 50);
         }
       }
     } catch (err: any) {
@@ -544,13 +607,13 @@ const App: React.FC = () => {
   };
 
   /* ─── AI Chat & Unified Action Dispatcher ─── */
-  const applyAction = async (action: string, params: Record<string, any>, customDoc?: PdfData) => {
+  const applyAction = async (action: string, params: Record<string, any>, customDoc?: PdfData): Promise<PdfData | undefined> => {
     if (action === 'set_theme') {
       const targetTheme = (params.theme || 'dark') as AppTheme;
       handleThemeChange(targetTheme);
-      return;
+      return customDoc || pdfDataRef.current || pdfData || undefined;
     }
-    const docToUse = customDoc || pdfData;
+    const docToUse = customDoc || pdfDataRef.current || pdfData;
     if (!docToUse) return;
     try {
       setLoading(true);
@@ -559,10 +622,10 @@ const App: React.FC = () => {
       switch (action) {
         case 'set_theme':
           handleThemeChange((params.theme || 'dark') as AppTheme);
-          return;
+          return docToUse;
         case 'run_ocr':
           await handleRunOcr(params.page || currentPage, docToUse);
-          return;
+          return pdfDataRef.current || docToUse;
         case 'change_font': {
           const ocrMap = new Map<number, PdfTextItem[]>();
           docToUse.pages.forEach(p => {
@@ -721,47 +784,41 @@ const App: React.FC = () => {
           break;
         case 'merge':
           setMergeWaiting(true);
-          return;
+          return docToUse;
         default:
-          return;
+          return docToUse;
       }
 
-      await updatePdfStateWithHistory(newBytes);
+      return await updatePdfStateWithHistory(newBytes);
     } catch (err: any) {
       setChatHistory(prev => [...prev, { role: 'ai', text: `Action error: ${err.message}` }]);
+      return docToUse;
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSendPrompt = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!prompt.trim()) return;
-
-    const userMsg = prompt.trim();
-    setPrompt('');
-    setChatHistory(prev => [...prev, { role: 'user', text: userMsg }]);
-
-    if (!pdfData) {
+  const executeUserPrompt = async (userMsg: string, docToUse?: PdfData): Promise<PdfData> => {
+    let currentDoc = docToUse || pdfDataRef.current || pdfData;
+    if (!currentDoc) {
       setTimeout(() => {
         setChatHistory(prev => [...prev, { role: 'ai', text: 'Please upload a PDF file first so I can assist you with it!' }]);
       }, 200);
-      return;
+      return currentDoc!;
     }
 
     try {
       setLoading(true);
       await new Promise(r => setTimeout(r, 40));
 
-      let currentDoc = pdfData;
-      const currPageInfo = pdfData.pages[currentPage - 1];
+      const currPageInfo = currentDoc.pages[currentPage - 1];
       if (currPageInfo?.isScanned && !currPageInfo?.ocrApplied) {
         try {
           setChatHistory(prev => [
             ...prev,
             { role: 'system', text: `📸 Image/scanned page detected. Running Online OCR so AI can read and edit it...` }
           ]);
-          const { base64 } = await extractPageAsBase64Image(pdfData.rawBytes, currentPage, 2.0);
+          const { base64 } = await extractPageAsBase64Image(currentDoc.rawBytes, currentPage, 2.0);
           const ocrResult = await runOnlineOcr(
             base64,
             currPageInfo.width,
@@ -771,7 +828,7 @@ const App: React.FC = () => {
             groqKey,
             activeModelName
           );
-          const updatedPages = [...pdfData.pages];
+          const updatedPages = [...currentDoc.pages];
           updatedPages[currentPage - 1] = {
             ...currPageInfo,
             text: ocrResult.fullText,
@@ -779,15 +836,16 @@ const App: React.FC = () => {
             isScanned: false,
             ocrApplied: true,
           };
-          currentDoc = { ...pdfData, pages: updatedPages };
+          currentDoc = { ...currentDoc, pages: updatedPages };
           setPdfData(currentDoc);
+          pdfDataRef.current = currentDoc;
         } catch (ocrErr) {
           console.warn('Auto OCR before AI prompt warning:', ocrErr);
         }
       }
-      
+
       const result = await processAIRequest(
-        chatHistory, userMsg, currentDoc, provider, geminiKey, groqKey, groqModel, activeModelName
+        chatHistoryRef.current, userMsg, currentDoc, provider, geminiKey, groqKey, groqModel, activeModelName
       );
 
       if (result.activeModel) {
@@ -797,8 +855,10 @@ const App: React.FC = () => {
       setChatHistory(prev => [...prev, { role: 'ai', text: result.message }]);
 
       if (result.action && result.action !== 'none') {
-        await applyAction(result.action, result.params, currentDoc);
+        const modified = await applyAction(result.action, result.params, currentDoc);
+        if (modified) currentDoc = modified;
       }
+      return currentDoc;
     } catch (err: any) {
       let errorMsg = err.message || String(err);
       const lower = errorMsg.toLowerCase();
@@ -806,11 +866,39 @@ const App: React.FC = () => {
         errorMsg = 'Rate limit reached. Please wait ~30 seconds before trying again.';
       else if (lower.includes('503') || lower.includes('overloaded'))
         errorMsg = 'AI service is temporarily busy. Please try again.';
-      
+
       setChatHistory(prev => [...prev, { role: 'ai', text: `Notice: ${errorMsg}` }]);
+      return currentDoc;
     } finally {
       setLoading(false);
     }
+  };
+  executeUserPromptRef.current = executeUserPrompt;
+
+  const handleSendPrompt = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!prompt.trim()) return;
+
+    const userMsg = prompt.trim();
+    setPrompt('');
+
+    // If Online OCR is running in background, show user message immediately and queue it
+    if (ocrRunningRef.current) {
+      pendingMessagesRef.current.push(userMsg);
+      setPendingQueueLength(pendingMessagesRef.current.length);
+      setChatHistory(prev => [
+        ...prev,
+        { role: 'user', text: userMsg },
+        {
+          role: 'ai',
+          text: `⚡ **Online OCR is currently running on Page ${ocrPageRef.current || 1}** to extract document text.\n\nYour message: _"${userMsg}"_ has been queued and will be processed immediately once OCR completes!`
+        }
+      ]);
+      return;
+    }
+
+    setChatHistory(prev => [...prev, { role: 'user', text: userMsg }]);
+    await executeUserPrompt(userMsg);
   };
 
   const handleExportPdf = () => {
@@ -1015,8 +1103,17 @@ const App: React.FC = () => {
                 onClick={() => handleRunOcr(currentPage)}
                 style={{ padding: '4px 10px' }}
                 title="Extract and edit text from scanned or screenshot pages using Online OCR"
+                disabled={ocrRunning && ocrPage === currentPage}
               >
-                <Scan size={14} /> {pdfData.pages[currentPage - 1]?.ocrApplied ? 'OCR Done' : 'Online OCR'}
+                {ocrRunning && ocrPage === currentPage ? (
+                  <>
+                    <Loader2 size={14} className="spin" /> Scanning...
+                  </>
+                ) : (
+                  <>
+                    <Scan size={14} /> {pdfData.pages[currentPage - 1]?.ocrApplied ? 'OCR Done' : 'Online OCR'}
+                  </>
+                )}
               </button>
             </div>
           )}
@@ -1172,9 +1269,17 @@ const App: React.FC = () => {
                     className={pdfData.pages[currentPage - 1]?.ocrApplied ? 'active-tool' : ''}
                     onClick={() => handleRunOcr(currentPage)}
                     title="Run Online OCR on this page to recognize and edit image text"
-                    disabled={loading}
+                    disabled={ocrRunning && ocrPage === currentPage}
                   >
-                    <Scan size={14} /> {pdfData.pages[currentPage - 1]?.ocrApplied ? 'OCR Done' : 'Online OCR'}
+                    {ocrRunning && ocrPage === currentPage ? (
+                      <>
+                        <Loader2 size={14} className="spin" /> Scanning...
+                      </>
+                    ) : (
+                      <>
+                        <Scan size={14} /> {pdfData.pages[currentPage - 1]?.ocrApplied ? 'OCR Done' : 'Online OCR'}
+                      </>
+                    )}
                   </button>
                   <button
                     onClick={() => setShowWatermarkModal(true)}
@@ -1207,8 +1312,20 @@ const App: React.FC = () => {
               {pdfData.pages[currentPage - 1]?.isScanned && !pdfData.pages[currentPage - 1]?.ocrApplied && (
                 <div className="scanned-page-banner">
                   <span>📸 Scanned or screenshot image detected on Page {currentPage}. Run Online OCR to extract and edit its text.</span>
-                  <button className="btn-banner-action" onClick={() => handleRunOcr(currentPage)} disabled={loading}>
-                    <Scan size={14} /> Run Online OCR
+                  <button
+                    className="btn-banner-action"
+                    onClick={() => handleRunOcr(currentPage)}
+                    disabled={ocrRunning && ocrPage === currentPage}
+                  >
+                    {ocrRunning && ocrPage === currentPage ? (
+                      <>
+                        <Loader2 size={14} className="spin" /> Scanning...
+                      </>
+                    ) : (
+                      <>
+                        <Scan size={14} /> Run Online OCR
+                      </>
+                    )}
                   </button>
                 </div>
               )}
@@ -1266,7 +1383,7 @@ const App: React.FC = () => {
         <button className="mobile-chat-fab" onClick={() => setIsMobileChatOpen(true)} aria-label="Open AI Assistant">
           <Bot size={18} />
           <span>Ask AI</span>
-          {loading && <Loader2 size={14} className="spin" />}
+          {(loading || ocrRunning) && <Loader2 size={14} className="spin" />}
         </button>
         {isMobileChatOpen && <div className="mobile-chat-backdrop" onClick={() => setIsMobileChatOpen(false)} />}
 
@@ -1281,8 +1398,8 @@ const App: React.FC = () => {
                 <div>
                   <div className="chat-title">AI PDF Assistant</div>
                   <div className="chat-status">
-                    <span className="online-dot" />
-                    {provider === 'gemini' ? (activeModelName || 'Gemini 3.6 Flash') : `Groq · ${groqModel.split('-').slice(0,2).join('-')}`}
+                    <span className={ocrRunning ? "online-dot ocr-dot-pulse" : "online-dot"} />
+                    {ocrRunning ? `OCR Indexing Page ${ocrPage || 1}...` : (provider === 'gemini' ? (activeModelName || 'Gemini 3.6 Flash') : `Groq · ${groqModel.split('-').slice(0,2).join('-')}`)}
                   </div>
                 </div>
               </div>
@@ -1358,11 +1475,24 @@ const App: React.FC = () => {
                 <button type="button" className="suggestion-chip" style={{ fontSize: '0.74rem', padding: '3px 8px' }} onClick={() => setPrompt('Switch to pearl mode')}>📜 Pearl Mode</button>
               </div>
             )}
+            {ocrRunning && (
+              <div className="ocr-live-status-pill">
+                <span className="ocr-live-dot" />
+                <span>
+                  <strong>Online OCR indexing Page {ocrPage || 1} in background</strong>
+                  {pendingQueueLength > 0 ? ` · (${pendingQueueLength} prompt${pendingQueueLength > 1 ? 's' : ''} queued)` : ' · You can message anytime'}
+                </span>
+              </div>
+            )}
             <form className="chat-input-wrapper" onSubmit={handleSendPrompt}>
               <input
                 type="text"
                 className="chat-input"
-                placeholder={pdfData ? "Ask AI or give command (e.g. Change name to...)" : "Upload a PDF first..."}
+                placeholder={
+                  ocrRunning
+                    ? `⚡ OCR indexing Page ${ocrPage || 1}... Send message to queue`
+                    : (pdfData ? "Ask AI or give command (e.g. Change name to...)" : "Upload a PDF first...")
+                }
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 disabled={loading}

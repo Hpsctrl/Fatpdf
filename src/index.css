@@ -1107,3 +1107,39 @@ header {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Live Background OCR Status Pill */
+.ocr-live-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--primary-light);
+  border-top: 1px solid var(--panel-border);
+  font-size: 0.76rem;
+  color: var(--primary);
+  font-weight: 500;
+  animation: fadeIn 0.25s ease;
+}
+
+.ocr-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+  box-shadow: 0 0 8px var(--primary);
+  animation: ocrPulse 1.2s infinite ease-in-out;
+  flex-shrink: 0;
+}
+
+@keyframes ocrPulse {
+  0%, 100% { transform: scale(0.85); opacity: 0.5; }
+  50% { transform: scale(1.3); opacity: 1; }
+}
+
+.ocr-dot-pulse {
+  background: #3b82f6 !important;
+  box-shadow: 0 0 6px #3b82f6 !important;
+  animation: ocrPulse 1.2s infinite ease-in-out;
+}
+
