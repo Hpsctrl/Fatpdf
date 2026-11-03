@@ -1143,3 +1143,33 @@ header {
   animation: ocrPulse 1.2s infinite ease-in-out;
 }
 
+/* Version Badge */
+.version-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid var(--panel-border);
+  border-radius: 12px;
+  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
+}
+
+.version-badge-sm {
+  font-size: 0.62rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  background: var(--primary-light);
+  color: var(--primary);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  margin-left: 6px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
+}
+
+

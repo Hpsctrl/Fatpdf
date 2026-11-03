@@ -21,7 +21,7 @@ import PdfViewer from './components/PdfViewer';
 import { SignatureModal } from './components/SignatureModal';
 import FatPdfIntro from './components/FatPdfIntro';
 
-export const APP_VERSION = 'v1.1.0';
+export const APP_VERSION = 'v1.2.0';
 export type AppTheme = 'adaptive' | 'light' | 'dark' | 'pearl';
 
 type ToolCategory = 'ai' | 'edit' | 'pages' | 'export';
@@ -934,6 +934,7 @@ const App: React.FC = () => {
             <div className="logo">
               <img src="/logo.png" alt="FatPDF Logo" className="logo-img" />
               <span className="logo-title">FatPDF</span>
+              <span className="version-badge">{APP_VERSION}</span>
             </div>
 
             <div className="header-actions">
@@ -1396,7 +1397,9 @@ const App: React.FC = () => {
                   <Bot size={17} color="#fff" />
                 </div>
                 <div>
-                  <div className="chat-title">AI PDF Assistant</div>
+                  <div className="chat-title">
+                    AI PDF Assistant <span className="version-badge-sm">{APP_VERSION}</span>
+                  </div>
                   <div className="chat-status">
                     <span className={ocrRunning ? "online-dot ocr-dot-pulse" : "online-dot"} />
                     {ocrRunning ? `OCR Indexing Page ${ocrPage || 1}...` : (provider === 'gemini' ? (activeModelName || 'Gemini 3.6 Flash') : `Groq · ${groqModel.split('-').slice(0,2).join('-')}`)}
@@ -1753,7 +1756,10 @@ const App: React.FC = () => {
         {showSettings && (
           <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) setShowSettings(false); }}>
             <div className="modal">
-              <h2 className="modal-title">Settings</h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <h2 className="modal-title" style={{ margin: 0 }}>Settings</h2>
+                <span className="version-badge">{APP_VERSION}</span>
+              </div>
 
               <div style={{ marginBottom: '1.2rem', padding: '10px 12px', background: 'var(--bg-color)', borderRadius: '10px', border: '1px solid var(--panel-border)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
